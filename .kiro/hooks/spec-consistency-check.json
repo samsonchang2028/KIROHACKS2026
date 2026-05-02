@@ -1,0 +1,13 @@
+{
+  "name": "Spec Consistency Check",
+  "version": "1.0.0",
+  "description": "Checks that tasks.md stays in sync when design or requirements docs are edited",
+  "when": {
+    "type": "fileEdited",
+    "patterns": [".kiro/specs/**/*.md"]
+  },
+  "then": {
+    "type": "askAgent",
+    "prompt": "A spec file was just edited. Check if the change affects the tasks list: if requirements.md or design.md was updated, scan tasks.md to see if any tasks are now outdated, missing, or contradict the updated spec. If tasks.md itself was edited, verify it still aligns with the requirements and design docs. Report any inconsistencies."
+  }
+}

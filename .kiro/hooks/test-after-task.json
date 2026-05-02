@@ -1,0 +1,12 @@
+{
+  "name": "Verify After Task Completion",
+  "version": "1.0.0",
+  "description": "Runs a quick sanity check after each spec task completes",
+  "when": {
+    "type": "postTaskExecution"
+  },
+  "then": {
+    "type": "askAgent",
+    "prompt": "A spec task just completed. Run a quick sanity check: verify the Electron app can still start by checking that main.js, preload.js, and the relevant HTML files are syntactically valid. Also confirm that no stubs in stubs.js were replaced with real implementations (no actual API calls, no real system automation). Report any issues found."
+  }
+}

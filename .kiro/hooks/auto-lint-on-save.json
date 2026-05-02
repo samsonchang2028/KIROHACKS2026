@@ -1,0 +1,13 @@
+{
+  "name": "Auto-lint on Save",
+  "version": "1.0.0",
+  "description": "Runs ESLint on JS files when saved and reports any issues",
+  "when": {
+    "type": "fileEdited",
+    "patterns": ["senior-assistant/*.js", "renderer/*.js"]
+  },
+  "then": {
+    "type": "runCommand",
+    "command": "cd senior-assistant && npm run lint"
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "name": "Rebuild on Source Change",
+  "version": "1.0.0",
+  "description": "Notifies the user to restart the Electron app when source files change",
+  "when": {
+    "type": "fileEdited",
+    "patterns": ["senior-assistant/*.js", "senior-assistant/*.html", "senior-assistant/*.css", "renderer/*.js", "renderer/*.html", "renderer/*.css"]
+  },
+  "then": {
+    "type": "askAgent",
+    "prompt": "A source file was just edited. Remind the user that Electron does not hot-reload by default, so they should restart the app with 'npm start' from the senior-assistant directory to see their changes. Only mention this if it seems like a meaningful change (not just a comment or whitespace edit)."
+  }
+}

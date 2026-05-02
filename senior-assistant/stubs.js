@@ -21,15 +21,49 @@ const { spawn, execSync } = require("child_process");
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-// Paths to the whisper.cpp binary and model bundled inside whisper-node.
-const WHISPER_BIN = path.join(
+// Paths to the whisper.cpp binary and model.
+// Priority: 1) Pre-built Windows binary in whisper-bin-win/ (no build tools needed)
+//           2) whisper-node compiled binary in node_modules/
+const _isWin = process.platform === "win32";
+
+// Pre-built Windows binary path
+const WHISPER_BIN_PREBUILT = path.join(
   __dirname,
-  "node_modules/whisper-node/lib/whisper.cpp/main",
+  "whisper-bin-win",
+  "main.exe",
 );
-const WHISPER_MODEL = path.join(
+
+// whisper-node compiled binary path
+const WHISPER_BIN_NODE = path.join(
   __dirname,
-  "node_modules/whisper-node/lib/whisper.cpp/models/ggml-base.bin",
+  "node_modules/whisper-node/lib/whisper.cpp",
+  _isWin ? "main.exe" : "main",
 );
+
+// Use pre-built if on Windows and it exists, otherwise fall back to whisper-node
+const WHISPER_BIN =
+  _isWin && fs.existsSync(WHISPER_BIN_PREBUILT)
+    ? WHISPER_BIN_PREBUILT
+    : WHISPER_BIN_NODE;
+
+// Model can be in either location
+const WHISPER_MODEL_PATHS = [
+  path.join(
+    __dirname,
+    "node_modules/whisper-node/lib/whisper.cpp/models/ggml-base.bin",
+  ),
+  path.join(
+    __dirname,
+    "node_modules/whisper-node/lib/whisper.cpp/models/ggml-base.en.bin",
+  ),
+  path.join(__dirname, "whisper-bin-win", "models", "ggml-base.bin"),
+];
+const WHISPER_MODEL =
+  WHISPER_MODEL_PATHS.find((p) => fs.existsSync(p)) || WHISPER_MODEL_PATHS[0];
+
+// Check if local whisper.cpp is available — if not, we'll use the cloud API.
+const _hasLocalWhisper =
+  fs.existsSync(WHISPER_BIN) && fs.existsSync(WHISPER_MODEL);
 
 // ---------------------------------------------------------------------------
 // Filler word stripping — cleans up natural speech before displaying
@@ -110,8 +144,8 @@ function warmUpWhisper() {
   try {
     console.log("[warmup] Pre-loading Whisper model...");
     execSync(
-      `"${WHISPER_BIN}" -m "${WHISPER_MODEL}" -f "${tmpWav}" -l en --no-timestamps -t 4 2>/dev/null`,
-      { timeout: 30000 },
+      `"${WHISPER_BIN}" -m "${WHISPER_MODEL}" -f "${tmpWav}" -l en --no-timestamps -t 4`,
+      { timeout: 30000, stdio: ["ignore", "pipe", "ignore"] },
     );
     console.log("[warmup] Whisper model loaded.");
   } catch (_) {
@@ -125,16 +159,16 @@ function warmUpWhisper() {
   }
 }
 
-// Kick off warm-up in the background — don't block module loading.
-setTimeout(warmUpWhisper, 1000);
+// Kick off warm-up in the background — only if local whisper is available.
+if (_hasLocalWhisper) setTimeout(warmUpWhisper, 1000);
 
 // ---------------------------------------------------------------------------
 // transcribeAudio — Person 2 (local Whisper STT via whisper.cpp)
 // ---------------------------------------------------------------------------
 
 // Converts a recorded audio Blob (or Buffer) to a transcription string.
-// Uses whisper.cpp locally — no API key, no internet, completely free.
-// The blob comes from the renderer's MediaRecorder via IPC.
+// Uses whisper.cpp locally if available (free, offline). Falls back to
+// OpenAI Whisper API if the local binary isn't compiled (needs OPENAI_API_KEY).
 async function transcribeAudio(blob) {
   // Convert whatever we receive into a Node Buffer.
   let buffer;
@@ -155,25 +189,31 @@ async function transcribeAudio(blob) {
     return "";
   }
 
-  // whisper.cpp requires a 16kHz mono WAV file.
-  // The renderer's MediaRecorder typically produces webm/opus.
-  // Write to temp file, convert to WAV with ffmpeg if needed, then transcribe.
+  if (_hasLocalWhisper) {
+    return _transcribeLocal(buffer);
+  } else {
+    console.log(
+      "[transcribeAudio] Local whisper.cpp not found, using OpenAI API",
+    );
+    return _transcribeCloud(buffer);
+  }
+}
+
+// --- Local whisper.cpp transcription ---
+
+async function _transcribeLocal(buffer) {
   const tmpInput = path.join(os.tmpdir(), `whisper-in-${Date.now()}.webm`);
   const tmpWav = path.join(os.tmpdir(), `whisper-${Date.now()}.wav`);
 
   fs.writeFileSync(tmpInput, buffer);
 
   try {
-    // Convert to 16kHz mono WAV using ffmpeg (available on most systems).
-    // If the input is already WAV, ffmpeg handles it fine.
     try {
       execSync(
-        `ffmpeg -y -i "${tmpInput}" -ar 16000 -ac 1 -c:a pcm_s16le "${tmpWav}" 2>/dev/null`,
-        { timeout: 10000 },
+        `ffmpeg -y -i "${tmpInput}" -ar 16000 -ac 1 -c:a pcm_s16le "${tmpWav}"`,
+        { timeout: 10000, stdio: ["ignore", "pipe", "ignore"] },
       );
     } catch (convErr) {
-      // If ffmpeg isn't available or conversion fails, try using the file directly.
-      // This works if the input is already a compatible WAV.
       console.warn(
         "[transcribeAudio] ffmpeg conversion failed, trying raw file:",
         convErr.message,
@@ -181,16 +221,12 @@ async function transcribeAudio(blob) {
       fs.copyFileSync(tmpInput, tmpWav);
     }
 
-    // Run local Whisper transcription by calling the whisper.cpp binary directly.
-    // The whisper-node JS wrapper has a parsing bug, so we bypass it.
     try {
       const raw = execSync(
-        `"${WHISPER_BIN}" -m "${WHISPER_MODEL}" -f "${tmpWav}" -l en --no-timestamps -t 4 2>/dev/null`,
-        { timeout: 30000 },
+        `"${WHISPER_BIN}" -m "${WHISPER_MODEL}" -f "${tmpWav}" -l en --no-timestamps -t 4`,
+        { timeout: 30000, stdio: ["ignore", "pipe", "ignore"] },
       ).toString();
 
-      // The transcript is everything after the model loading output.
-      // With --no-timestamps, whisper.cpp prints plain text lines.
       const rawText = raw
         .split("\n")
         .map((l) => l.trim())
@@ -198,7 +234,6 @@ async function transcribeAudio(blob) {
         .join(" ")
         .trim();
 
-      // Strip filler words for cleaner display and better AI understanding.
       const text = stripFillers(rawText);
 
       console.log("[transcribeAudio] Raw:", rawText);
@@ -222,6 +257,51 @@ async function transcribeAudio(blob) {
     }
     try {
       fs.unlinkSync(tmpWav);
+    } catch (_) {
+      /* ignore */
+    }
+  }
+}
+
+// --- Cloud OpenAI Whisper API fallback ---
+
+async function _transcribeCloud(buffer) {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) {
+    console.error(
+      "[transcribeAudio] No local Whisper and no OPENAI_API_KEY — cannot transcribe.",
+    );
+    return "";
+  }
+
+  // Write buffer to a temp file for the multipart upload.
+  const tmpFile = path.join(os.tmpdir(), `whisper-cloud-${Date.now()}.webm`);
+  fs.writeFileSync(tmpFile, buffer);
+
+  try {
+    // Use curl for the multipart form upload — simpler than pulling in a full HTTP library.
+    const raw = execSync(
+      `curl -s -X POST "https://api.openai.com/v1/audio/transcriptions" ` +
+        `-H "Authorization: Bearer ${apiKey}" ` +
+        `-F "model=whisper-1" ` +
+        `-F "language=en" ` +
+        `-F "file=@${tmpFile}"`,
+      { timeout: 30000 },
+    ).toString();
+
+    const result = JSON.parse(raw);
+    const rawText = (result.text || "").trim();
+    const text = stripFillers(rawText);
+
+    console.log("[transcribeAudio] Cloud raw:", rawText);
+    console.log("[transcribeAudio] Cloud cleaned:", text);
+    return text;
+  } catch (err) {
+    console.error("[transcribeAudio] Cloud Whisper error:", err.message);
+    return "";
+  } finally {
+    try {
+      fs.unlinkSync(tmpFile);
     } catch (_) {
       /* ignore */
     }
@@ -296,19 +376,31 @@ function _speakWithEdgeTts(text) {
   // edge-tts generates an mp3, then we play it with the OS audio player.
   // Run as a single shell command: generate → play → cleanup.
   let playCmd;
+  let shellBin, shellArg, cleanupCmd;
   if (platform === "darwin") {
     playCmd = `afplay "${tmpMp3}"`;
+    shellBin = "sh";
+    shellArg = "-c";
+    cleanupCmd = `rm -f "${tmpMp3}"`;
   } else if (platform === "win32") {
     // PowerShell can play audio via .NET.
     playCmd = `powershell -NoProfile -Command "(New-Object Media.SoundPlayer '${tmpMp3}').PlaySync()"`;
+    shellBin = "cmd";
+    shellArg = "/c";
+    cleanupCmd = `del /q "${tmpMp3}"`;
   } else {
     playCmd = `aplay "${tmpMp3}" 2>/dev/null || mpv --no-video "${tmpMp3}" 2>/dev/null`;
+    shellBin = "sh";
+    shellArg = "-c";
+    cleanupCmd = `rm -f "${tmpMp3}"`;
   }
 
   // Spawn a shell that generates then plays the audio.
-  const shellCmd = `"${_edgeTtsCmd}" --text "${text.replace(/"/g, '\\"')}" --voice ${EDGE_TTS_VOICE} --write-media "${tmpMp3}" 2>/dev/null && ${playCmd}; rm -f "${tmpMp3}"`;
+  const separator = platform === "win32" ? "&" : "&&";
+  const terminator = platform === "win32" ? "&" : ";";
+  const shellCmd = `"${_edgeTtsCmd}" --text "${text.replace(/"/g, '\\"')}" --voice ${EDGE_TTS_VOICE} --write-media "${tmpMp3}" 2>NUL ${separator} ${playCmd}${terminator} ${cleanupCmd}`;
 
-  _ttsProcess = spawn("sh", ["-c", shellCmd]);
+  _ttsProcess = spawn(shellBin, [shellArg, shellCmd]);
 
   _ttsProcess.on("error", (err) => {
     console.error(
@@ -451,21 +543,26 @@ async function executeAction(action) {
     switch (action.name) {
       case "setVolume": {
         // NirCmd setvolume: 0 = master, value range 0–65535
-        const rawLevel = typeof action.params === 'number'
-          ? action.params
-          : (action.params?.level ?? 0);
-        const level = Math.round(rawLevel / 100 * 65535);
+        const rawLevel =
+          typeof action.params === "number"
+            ? action.params
+            : (action.params?.level ?? 0);
+        const level = Math.round((rawLevel / 100) * 65535);
         const cmd = `"${NIRCMD}" setvolume 0 ${level} ${level}`;
         console.log("[ACTION] running:", cmd);
-        const output = execSync(cmd, { encoding: 'utf8', stdio: 'pipe' });
-        console.log("[ACTION] nircmd output:", output || '(no output — success)');
+        const output = execSync(cmd, { encoding: "utf8", stdio: "pipe" });
+        console.log(
+          "[ACTION] nircmd output:",
+          output || "(no output — success)",
+        );
         break;
       }
       case "setBrightness": {
         // NirCmd setbrightness: 0–100
-        const rawBrightness = typeof action.params === 'number'
-          ? action.params
-          : (action.params?.level ?? 50);
+        const rawBrightness =
+          typeof action.params === "number"
+            ? action.params
+            : (action.params?.level ?? 50);
         execSync(`"${NIRCMD}" setbrightness ${rawBrightness}`);
         break;
       }
@@ -477,7 +574,7 @@ async function executeAction(action) {
         const dpi = dpiMap[scale] ?? 144;
         execSync(
           `reg add "HKCU\\Control Panel\\Desktop" /v LogPixels /t REG_DWORD /d ${dpi} /f && ` +
-          `rundll32.exe user32.dll,UpdatePerUserSystemParameters`
+            `rundll32.exe user32.dll,UpdatePerUserSystemParameters`,
         );
         break;
       }

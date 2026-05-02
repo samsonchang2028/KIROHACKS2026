@@ -10,7 +10,9 @@ const path = require("path");
 const stubs = require("./stubs");
 
 // Named sizes make position math readable and keep the two window configs in sync.
-const FLOATING = { width: 80, height: 80, margin: 20 };
+// FLOATING.width/height is the Electron window — larger than the button (100px) to give
+// breathing room for the drop shadow and the hover scale(1.07) without clipping.
+const FLOATING = { width: 120, height: 120, margin: 20 };
 const CHAT = { width: 480, height: 600 };
 
 // Both windows share identical security settings; one definition prevents drift.
@@ -80,12 +82,12 @@ function createChatWindow() {
 // --- Show/hide helpers (shared by IPC handler and global shortcut) ---
 
 function showChatWindow() {
-  if (!chatWindow) createChatWindow();
-  else chatWindow.show();
+  if (!chatWindow) { createChatWindow(); }
+  else { chatWindow.show(); }
 }
 
 function hideChatWindow() {
-  if (chatWindow) chatWindow.hide();
+  if (chatWindow) { chatWindow.hide(); }
 }
 
 // --- IPC: window management ---

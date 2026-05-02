@@ -28,6 +28,12 @@ body {
   overflow: hidden;
 }
 
+/* Floating window has transparent: true in main.js — body must also be transparent
+   so no white rectangle shows behind the circle. Scoped via #floating-btn presence. */
+body:has(#floating-btn) {
+  background: transparent;
+}
+
 /* --- Header (inside #messages, scrolls away naturally) --- */
 
 #header {
@@ -247,28 +253,50 @@ body {
 
 /* --- Floating Help button (floating.html shares this file) --- */
 
+/* #floating-btn matches the Electron window size (120px).
+   The extra 10px on each side gives the shadow and hover scale room to breathe
+   without being clipped by the window boundary. */
 #floating-btn {
-  width: 80px;
-  height: 80px;
+  width: 120px;
+  height: 120px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   -webkit-app-region: drag;
 }
 
 #floating-inner {
-  width: 80px;
-  height: 80px;
+  width: 100px;
+  height: 100px;
   border-radius: 50%;
-  background: #4A90E2;
+  background: var(--idle);
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 2px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  gap: 4px;
+  box-shadow: 0 4px 14px rgba(74, 144, 226, 0.45), 0 2px 6px rgba(0, 0, 0, 0.18);
   cursor: pointer;
   -webkit-app-region: no-drag;
-  transition: background 0.15s ease;
+  transition: transform 0.15s ease, filter 0.15s ease;
 }
 
-#floating-inner:hover { background: #357ABD; }
-#floating-icon  { font-size: 28px; line-height: 1; color: #fff; }
-#floating-label { font-size: 12px; font-weight: 600; color: #fff; letter-spacing: 0.03em; }
+#floating-inner:hover {
+  transform: scale(1.07);
+  filter: brightness(1.1);
+}
+
+#floating-label {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 18pt;
+  font-weight: 700;
+  color: #fff;
+  letter-spacing: 0.02em;
+  user-select: none;
+}
+
+#floating-icon {
+  font-size: 30px;
+  line-height: 1;
+  user-select: none;
+}
