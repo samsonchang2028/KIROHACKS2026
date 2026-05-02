@@ -50,6 +50,16 @@ RULES:
 - If the user mentions text being small or hard to read, use setTextSize with scale 150 as a safe default.
 - For openApp: if the app name looks misspelled or you're not sure what app they mean, use clarify to ask. For example "open drrrcket" should respond with clarify: "Did you mean DrRacket?" When the user confirms, use openApp with the corrected name.
 - For openWebsite: if the user asks to open a website, store, or online service (e.g. "open Amazon", "go to YouTube", "open Gmail"), use openWebsite with the full URL. Always use https://. For example "open Amazon" → openWebsite with {"url": "https://www.amazon.com"}. Use openApp only for desktop applications.
+- INTENT MAPPING — when the user's request implies a website or online service, use openWebsite:
+  - "play music" / "play [artist/song]" / "play some [genre]" → ALWAYS use openWebsite https://open.spotify.com/search/[query] — music requests always go to Spotify
+  - "I want to watch a video/something" → openWebsite https://www.youtube.com
+  - "I want to shop/buy something" → openWebsite https://www.amazon.com
+  - "check my email" → openWebsite https://mail.google.com
+  - "search for X" / "look up X" → openWebsite https://www.google.com/search?q=X
+  - "watch a movie/show" → openWebsite https://www.netflix.com
+  - "read the news" → openWebsite https://news.google.com
+  - If the intent could match multiple services, use clarify. E.g. "I want to watch something" → clarify: "Would you like YouTube, Netflix, or something else?"
+- When the user confirms a clarification (e.g. "yeah, Spotify" or "YouTube please"), immediately perform the action — do NOT clarify again. Map their answer to the correct openWebsite URL and execute it.
 - params must ALWAYS be a JSON object like {"level": 80} or {"name": "chrome"}, never a bare string or number.`;
 
 // Shared request headers — sent on every OpenRouter request
@@ -67,9 +77,21 @@ const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
 // Shared request options applied to both text and vision calls
 const SHARED_OPTIONS = {
     max_tokens: 256,
-    temperature: 0.1,
+    temperature: 0,
     response_format: { type: 'json_object' },
 };
+
+// --- Robust JSON parser for LLM output ---
+// Haiku sometimes wraps JSON in markdown code fences or adds text around it.
+function parseLLMJson(raw) {
+    try { return JSON.parse(raw); } catch (_) {}
+    // Try extracting JSON from markdown code fences or surrounding text
+    const match = raw.match(/\{[\s\S]*\}/);
+    if (match) {
+        try { return JSON.parse(match[0]); } catch (_) {}
+    }
+    throw new Error(`[LLM] Could not parse JSON from response: ${raw.slice(0, 200)}`);
+}
 
 // --- Task 3.2: textQuery ---
 
@@ -90,7 +112,7 @@ async function textQuery(userMessage, history = []) {
     ];
 
     const body = {
-        model: 'anthropic/claude-3-haiku',
+        model: 'openai/gpt-4o-mini',
         messages,
         ...SHARED_OPTIONS,
     };
@@ -109,7 +131,7 @@ async function textQuery(userMessage, history = []) {
     const raw = data.choices[0].message.content;
 
     // JSON.parse throws on malformed content — pipeline.js catches this
-    return JSON.parse(raw);
+    return parseLLMJson(raw);
 }
 
 // --- Task 3.3: visionQuery ---
@@ -156,7 +178,7 @@ async function visionQuery(userMessage, screenshotBase64, history = []) {
     const data = await res.json();
     const raw = data.choices[0].message.content;
 
-    return JSON.parse(raw);
+    return parseLLMJson(raw);
 }
 
 module.exports = { textQuery, visionQuery };

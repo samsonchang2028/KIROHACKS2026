@@ -8,26 +8,20 @@ const CONFIRMING = "confirming";
 const DOING = "doing";
 const VALID_STATES = [IDLE, LISTENING, THINKING, CONFIRMING, DOING];
 
-// Status text shown only during active states.
+// Status text shown only during active states — idle shows nothing (input row is enough).
 const STATUS_TEXT = {
   [IDLE]: "",
-  [LISTENING]: "🎙 Listening...",
-  [THINKING]: "⏳ Thinking...",
+  [LISTENING]: "Listening...",
+  [THINKING]: "Thinking...",
   [CONFIRMING]: "",
-  [DOING]: "⚙️ Doing it now...",
-};
-
-const STATUS_COLOR = {
-  [LISTENING]: "#E74C3C",
-  [THINKING]: "#666",
-  [DOING]: "#27AE60",
-  [CONFIRMING]: "",
-  [IDLE]: "",
+  [DOING]: "Doing it now...",
 };
 
 let currentState = IDLE;
 
-// --- Mic recording ---
+// --- Mic recording (teammate's implementation — do not modify signatures) ---
+// initMic requests access upfront so first recording starts instantly.
+// startRecording / stopRecording wrap MediaRecorder with clean ArrayBuffer output.
 
 let mediaRecorder = null;
 let audioChunks = [];
@@ -73,6 +67,7 @@ function stopRecording() {
         return;
       }
       const blob = new Blob(audioChunks, { type: "audio/webm" });
+      // ArrayBuffer transfers cleanly over Electron IPC.
       resolve(await blob.arrayBuffer());
     };
     mediaRecorder.stop();
@@ -81,61 +76,21 @@ function stopRecording() {
 
 // --- DOM refs ---
 
-const statusEl        = document.getElementById("status-text");
-const micArea         = document.getElementById("mic-area");
-const messagesEl      = document.getElementById("messages");
-const hintEl          = document.getElementById("hint");
-const chipsEl         = document.getElementById("chips");
-const textInput       = document.getElementById("text-input");
-const sendBtn         = document.getElementById("send-btn");
-const voiceBtn        = document.getElementById("voice-btn");
-const voiceIcon       = document.getElementById("voice-icon");
-const voiceLabel      = document.getElementById("voice-label");
-const doingBar        = document.getElementById("doing-bar");
-const typingIndicator = document.getElementById("typing-indicator");
-
-// --- Title bar buttons ---
-
-document.getElementById("tb-minimize").addEventListener("click", () => window.api.winMinimize());
-document.getElementById("tb-maximize").addEventListener("click", () => window.api.winMaximize());
-document.getElementById("tb-close").addEventListener("click", () => window.api.winClose());
-
-// --- Quick suggestion chips ---
-
-document.querySelectorAll(".chip").forEach((chip) => {
-  chip.addEventListener("click", () => {
-    if (currentState !== IDLE) return;
-    window.api.stopSpeaking();
-    textInput.value = "";
-    handleUserInput(chip.textContent);
-  });
-});
-
-// --- Live transcript preview ---
-
-let previewEl = null;
-
-function showTranscriptPreview() {
-  if (previewEl) return;
-  previewEl = document.createElement("div");
-  previewEl.className = "msg msg-user msg-preview";
-  previewEl.textContent = "Listening… ▌";
-  messagesEl.appendChild(previewEl);
-  messagesEl.scrollTop = messagesEl.scrollHeight;
-}
-
-function removeTranscriptPreview() {
-  if (previewEl) {
-    previewEl.remove();
-    previewEl = null;
-  }
-}
+const statusEl = document.getElementById("status-text");
+const micArea = document.getElementById("mic-area");
+const messagesEl = document.getElementById("messages");
+const hintEl = document.getElementById("hint");
+const textInput = document.getElementById("text-input");
+const sendBtn = document.getElementById("send-btn");
+const voiceBtn = document.getElementById("voice-btn");
+const voiceIcon = document.getElementById("voice-icon");
+const voiceLabel = document.getElementById("voice-label");
 
 // --- Message rendering ---
 
 function renderMessage(role, text) {
+  // Hide the onboarding hint permanently once the first message appears.
   hintEl.classList.add("hidden");
-  chipsEl.classList.add("hidden");
 
   const div = document.createElement("div");
   div.className = `msg msg-${role}`;
@@ -144,19 +99,19 @@ function renderMessage(role, text) {
   messagesEl.scrollTop = messagesEl.scrollHeight;
 }
 
-// --- Confirmation buttons ---
+// --- Confirmation buttons (injected into mic-area during confirming state) ---
 
 function renderConfirmButtons(question, action) {
   micArea.innerHTML = "";
 
   const yes = document.createElement("button");
   yes.className = "confirm-btn confirm-yes";
-  yes.textContent = "✓ Yes";
+  yes.textContent = "Yes";
   yes.addEventListener("click", () => handleConfirm(true, action));
 
   const no = document.createElement("button");
   no.className = "confirm-btn confirm-no";
-  no.textContent = "✗ No";
+  no.textContent = "No";
   no.addEventListener("click", () => handleConfirm(false, action));
 
   micArea.appendChild(yes);
@@ -170,20 +125,17 @@ function clearConfirmButtons() {
 // --- Voice button visual state ---
 
 function setVoiceButtonState(state) {
-  voiceBtn.className = "";
+  voiceBtn.className = `voice-btn-${state}`;
 
   if (state === LISTENING) {
-    voiceBtn.classList.add("voice-btn-listening");
     voiceIcon.textContent = "⏹";
     voiceLabel.textContent = "Stop";
+    // Glow ring signals mic is live — slow and calm, not alarming.
+    voiceBtn.classList.add("pulsing");
   } else if (state === THINKING) {
-    voiceBtn.classList.add("voice-btn-thinking", "spinning-icon");
     voiceIcon.textContent = "⟳";
-    voiceLabel.textContent = "...";
-  } else if (state === DOING) {
-    voiceBtn.classList.add("voice-btn-doing");
-    voiceIcon.textContent = "🔊";
-    voiceLabel.textContent = "Doing";
+    voiceLabel.textContent = "Thinking...";
+    voiceBtn.classList.add("spinning-icon");
   } else {
     voiceIcon.textContent = "🎤";
     voiceLabel.textContent = "Speak";
@@ -198,34 +150,6 @@ function setMicState(state, context) {
 
   currentState = state;
   statusEl.textContent = STATUS_TEXT[state];
-  statusEl.style.color = STATUS_COLOR[state] || "#666";
-
-  // Doing progress bar
-  if (state === DOING) {
-    doingBar.classList.add("active");
-    // Reset animation by re-inserting fill
-    const fill = document.getElementById("doing-bar-fill");
-    fill.style.animation = "none";
-    fill.offsetHeight; // force reflow
-    fill.style.animation = "";
-  } else {
-    doingBar.classList.remove("active");
-  }
-
-  // Typing indicator
-  if (state === THINKING) {
-    typingIndicator.classList.remove("hidden");
-    messagesEl.scrollTop = messagesEl.scrollHeight;
-  } else {
-    typingIndicator.classList.add("hidden");
-  }
-
-  // Live transcript preview
-  if (state === LISTENING) {
-    showTranscriptPreview();
-  } else {
-    removeTranscriptPreview();
-  }
 
   if (state === CONFIRMING) {
     renderConfirmButtons(context.question, context.action);
@@ -235,10 +159,11 @@ function setMicState(state, context) {
 
   setVoiceButtonState(state);
 
+  // Disable text input while assistant is busy; re-enable at idle or confirming.
   const busy = state !== IDLE && state !== CONFIRMING;
   textInput.disabled = busy;
   sendBtn.disabled = busy;
-  voiceBtn.disabled = state === THINKING || state === DOING || state === CONFIRMING;
+  voiceBtn.disabled = state === THINKING || state === DOING;
 
   // Announce transitions for vision-impaired users.
   if (state === LISTENING) window.api.speak("Listening");
@@ -249,7 +174,7 @@ function setMicState(state, context) {
   else if (state === IDLE && context === "completed") window.api.speak("Done");
 }
 
-// --- Shared response handler ---
+// --- Shared response handler (text and voice both funnel here) ---
 
 async function handleUserInput(userText) {
   if (!userText || !userText.trim()) return;
@@ -262,15 +187,18 @@ async function handleUserInput(userText) {
     renderMessage("assistant", response.speak);
 
     if (response.requiresConfirmation && response.action) {
+      // Confirmation flow — speak is handled by setMicState(CONFIRMING).
       setMicState(CONFIRMING, {
         question: response.speak,
         action: response.action,
       });
     } else if (response.action) {
+      // Action that doesn't need confirmation — speak response, then execute.
       window.api.speak(response.speak);
       setMicState(DOING);
       await executeAndFinish(response.action);
     } else {
+      // No action (clarification, refusal, etc.) — just speak the response and go idle.
       window.api.speak(response.speak);
       setMicState(IDLE);
     }
@@ -284,7 +212,7 @@ async function handleUserInput(userText) {
   }
 }
 
-// --- Text input ---
+// --- Text input: Enter submits, Shift+Enter inserts newline ---
 
 textInput.addEventListener("keydown", (e) => {
   if (e.key === "Enter" && !e.shiftKey) {
@@ -298,16 +226,18 @@ sendBtn.addEventListener("click", submitTextInput);
 function submitTextInput() {
   const text = textInput.value.trim();
   if (!text || currentState !== IDLE) return;
+  // Stop any in-progress speech when user submits text.
   window.api.stopSpeaking();
   textInput.value = "";
   handleUserInput(text);
 }
 
-// --- Voice button ---
+// --- Voice button: click once to start, click again to stop ---
 
 voiceBtn.addEventListener("click", async () => {
   if (currentState === IDLE) await startListening();
   else if (currentState === LISTENING) await stopListening();
+  // Other states: button is disabled, clicks are ignored.
 });
 
 async function startListening() {
@@ -319,6 +249,7 @@ async function startListening() {
     window.api.speak("I couldn't access your microphone.");
     return;
   }
+  // Stop any in-progress speech when user starts talking.
   window.api.stopSpeaking();
   startRecording();
   setMicState(LISTENING);
@@ -388,8 +319,5 @@ async function executeAndFinish(action) {
 
 // --- Init ---
 
-initMic();
+initMic(); // Request mic access upfront — first recording starts instantly.
 setMicState(IDLE);
-
-// Remove window-open animation class after it plays so it doesn't replay on reflow.
-setTimeout(() => document.body.classList.remove("window-opening"), 250);
