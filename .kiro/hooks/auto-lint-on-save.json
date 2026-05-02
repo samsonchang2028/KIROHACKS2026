@@ -1,13 +1,13 @@
 {
   "name": "Auto-lint on Save",
   "version": "1.0.0",
-  "description": "Reminds the agent to check JS files for code quality issues when saved",
+  "description": "Runs ESLint on JS files when saved and reports any issues",
   "when": {
     "type": "fileEdited",
     "patterns": ["senior-assistant/*.js", "renderer/*.js"]
   },
   "then": {
-    "type": "askAgent",
-    "prompt": "A JS file was just saved. Review it for code quality issues: check for console.log statements that should be cleaned up, any direct LLM/TTS/system calls that bypass stubs.js, missing async/await patterns, or any global state being introduced. Report any issues found."
+    "type": "runCommand",
+    "command": "cd senior-assistant && npm run lint"
   }
 }

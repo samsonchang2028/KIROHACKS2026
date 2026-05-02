@@ -82,12 +82,12 @@ function createChatWindow() {
 // --- Show/hide helpers (shared by IPC handler and global shortcut) ---
 
 function showChatWindow() {
-  if (!chatWindow) createChatWindow();
-  else chatWindow.show();
+  if (!chatWindow) { createChatWindow(); }
+  else { chatWindow.show(); }
 }
 
 function hideChatWindow() {
-  if (chatWindow) chatWindow.hide();
+  if (chatWindow) { chatWindow.hide(); }
 }
 
 // --- IPC: window management ---

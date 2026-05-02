@@ -22,13 +22,15 @@ const { spawn, execSync } = require("child_process");
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 // Paths to the whisper.cpp binary and model bundled inside whisper-node.
+// On Windows the binary is main.exe; on other platforms it's just main.
 const WHISPER_BIN = path.join(
   __dirname,
-  "node_modules/whisper-node/lib/whisper.cpp/main",
+  "node_modules/whisper-node/lib/whisper.cpp",
+  process.platform === "win32" ? "main.exe" : "main",
 );
 const WHISPER_MODEL = path.join(
   __dirname,
-  "node_modules/whisper-node/lib/whisper.cpp/models/ggml-base.bin",
+  "node_modules/whisper-node/lib/whisper.cpp/models/ggml-base.en.bin",
 );
 
 // Check if local whisper.cpp is available — if not, we'll use the cloud API.
@@ -114,8 +116,8 @@ function warmUpWhisper() {
   try {
     console.log("[warmup] Pre-loading Whisper model...");
     execSync(
-      `"${WHISPER_BIN}" -m "${WHISPER_MODEL}" -f "${tmpWav}" -l en --no-timestamps -t 4 2>/dev/null`,
-      { timeout: 30000 },
+      `"${WHISPER_BIN}" -m "${WHISPER_MODEL}" -f "${tmpWav}" -l en --no-timestamps -t 4`,
+      { timeout: 30000, stdio: ["ignore", "pipe", "ignore"] },
     );
     console.log("[warmup] Whisper model loaded.");
   } catch (_) {
@@ -180,8 +182,8 @@ async function _transcribeLocal(buffer) {
   try {
     try {
       execSync(
-        `ffmpeg -y -i "${tmpInput}" -ar 16000 -ac 1 -c:a pcm_s16le "${tmpWav}" 2>/dev/null`,
-        { timeout: 10000 },
+        `ffmpeg -y -i "${tmpInput}" -ar 16000 -ac 1 -c:a pcm_s16le "${tmpWav}"`,
+        { timeout: 10000, stdio: ["ignore", "pipe", "ignore"] },
       );
     } catch (convErr) {
       console.warn(
@@ -193,8 +195,8 @@ async function _transcribeLocal(buffer) {
 
     try {
       const raw = execSync(
-        `"${WHISPER_BIN}" -m "${WHISPER_MODEL}" -f "${tmpWav}" -l en --no-timestamps -t 4 2>/dev/null`,
-        { timeout: 30000 },
+        `"${WHISPER_BIN}" -m "${WHISPER_MODEL}" -f "${tmpWav}" -l en --no-timestamps -t 4`,
+        { timeout: 30000, stdio: ["ignore", "pipe", "ignore"] },
       ).toString();
 
       const rawText = raw
@@ -346,19 +348,31 @@ function _speakWithEdgeTts(text) {
   // edge-tts generates an mp3, then we play it with the OS audio player.
   // Run as a single shell command: generate → play → cleanup.
   let playCmd;
+  let shellBin, shellArg, cleanupCmd;
   if (platform === "darwin") {
     playCmd = `afplay "${tmpMp3}"`;
+    shellBin = "sh";
+    shellArg = "-c";
+    cleanupCmd = `rm -f "${tmpMp3}"`;
   } else if (platform === "win32") {
     // PowerShell can play audio via .NET.
     playCmd = `powershell -NoProfile -Command "(New-Object Media.SoundPlayer '${tmpMp3}').PlaySync()"`;
+    shellBin = "cmd";
+    shellArg = "/c";
+    cleanupCmd = `del /q "${tmpMp3}"`;
   } else {
     playCmd = `aplay "${tmpMp3}" 2>/dev/null || mpv --no-video "${tmpMp3}" 2>/dev/null`;
+    shellBin = "sh";
+    shellArg = "-c";
+    cleanupCmd = `rm -f "${tmpMp3}"`;
   }
 
   // Spawn a shell that generates then plays the audio.
-  const shellCmd = `"${_edgeTtsCmd}" --text "${text.replace(/"/g, '\\"')}" --voice ${EDGE_TTS_VOICE} --write-media "${tmpMp3}" 2>/dev/null && ${playCmd}; rm -f "${tmpMp3}"`;
+  const separator = platform === "win32" ? "&" : "&&";
+  const terminator = platform === "win32" ? "&" : ";";
+  const shellCmd = `"${_edgeTtsCmd}" --text "${text.replace(/"/g, '\\"')}" --voice ${EDGE_TTS_VOICE} --write-media "${tmpMp3}" 2>NUL ${separator} ${playCmd}${terminator} ${cleanupCmd}`;
 
-  _ttsProcess = spawn("sh", ["-c", shellCmd]);
+  _ttsProcess = spawn(shellBin, [shellArg, shellCmd]);
 
   _ttsProcess.on("error", (err) => {
     console.error(
