@@ -1,1 +1,18 @@
-<!-- floating.html — Always-on-top floating button window: the entry point seniors tap to start talking. -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <!-- drag region wraps the whole window; no-drag inner lets clicks through -->
+  <div id="floating-btn">
+    <div id="floating-inner">
+      <span id="floating-icon">🎤</span>
+      <span id="floating-label">Help</span>
+    </div>
+  </div>
+  <script src="floating.js"></script>
+</body>
+</html>

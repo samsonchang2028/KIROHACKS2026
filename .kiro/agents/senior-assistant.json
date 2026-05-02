@@ -1,0 +1,20 @@
+{
+  "name": "senior-assistant",
+  "description": "Electron accessibility app for seniors",
+  "resources": [
+    "file://senior-assistant/**/*.js",
+    "file://senior-assistant/package.json",
+    "file://.kiro/specs/**/*.md"
+  ],
+  "hooks": {
+    "agentSpawn": [
+      { "command": "cd senior-assistant && node --version && npm list --depth=0" }
+    ]
+  },
+  "mcpServers": {
+    "git": {
+      "command": "mcp-server-git",
+      "args": ["--stdio"]
+    }
+  }
+}

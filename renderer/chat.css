@@ -1,4 +1,4 @@
-/* styles.css — Large-print, high-contrast, senior-accessible visual design. */
+/* chat.css — Large-print, high-contrast styles for the chat window. */
 
 :root {
   --idle: #4A90E2;
@@ -114,9 +114,9 @@ body {
 
 /* State colors applied via class */
 #mic-btn.state-idle      { background: var(--idle); }
-#mic-btn.state-listening  { background: var(--listening); }
-#mic-btn.state-thinking   { background: var(--thinking); }
-#mic-btn.state-doing      { background: var(--doing); }
+#mic-btn.state-listening { background: var(--listening); }
+#mic-btn.state-thinking  { background: var(--thinking); }
+#mic-btn.state-doing     { background: var(--doing); }
 
 /* --- Pulsing animation for listening state --- */
 
@@ -152,31 +152,3 @@ body {
 
 .confirm-yes { background: var(--yes); }
 .confirm-no  { background: var(--no); }
-
-/* --- Floating button (shared file, keep existing styles) --- */
-
-#floating-btn {
-  width: 80px;
-  height: 80px;
-  -webkit-app-region: drag;
-}
-
-#floating-inner {
-  width: 80px;
-  height: 80px;
-  border-radius: 50%;
-  background: #4A90E2;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 2px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
-  cursor: pointer;
-  -webkit-app-region: no-drag;
-  transition: background 0.15s ease;
-}
-
-#floating-inner:hover { background: #357ABD; }
-#floating-icon  { font-size: 28px; line-height: 1; color: #fff; }
-#floating-label { font-size: 12px; font-weight: 600; color: #fff; letter-spacing: 0.03em; }

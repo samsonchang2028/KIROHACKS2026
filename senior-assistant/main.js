@@ -1,30 +1,147 @@
-// main.js — Electron main process: creates windows, registers ipcMain handlers, owns app lifecycle.
-const { app, BrowserWindow } = require('electron');
-const path = require('path');
+const {
+  app,
+  BrowserWindow,
+  ipcMain,
+  globalShortcut,
+  screen,
+  session,
+} = require("electron");
+const path = require("path");
+const stubs = require("./stubs");
 
-// Module-level reference prevents GC from collecting the window object and closing it immediately.
-let mainWindow = null;
+// Named sizes make position math readable and keep the two window configs in sync.
+const FLOATING = { width: 80, height: 80, margin: 20 };
+const CHAT = { width: 480, height: 600 };
 
-function createWindow() {
-  mainWindow = new BrowserWindow({
-    width: 800,
-    height: 600,
-    webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
-    },
+// Both windows share identical security settings; one definition prevents drift.
+const webPreferences = {
+  preload: path.join(__dirname, "preload.js"),
+  contextIsolation: true,
+  nodeIntegration: false,
+};
+
+let floatingWindow = null;
+let chatWindow = null;
+
+// --- Window factories ---
+
+function createFloatingWindow() {
+  const { width, height } = screen.getPrimaryDisplay().workAreaSize;
+
+  floatingWindow = new BrowserWindow({
+    width: FLOATING.width,
+    height: FLOATING.height,
+    x: width - FLOATING.width - FLOATING.margin,
+    y: height - FLOATING.height - FLOATING.margin,
+    frame: false,
+    transparent: true,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    resizable: false,
+    focusable: false,
+    webPreferences,
   });
 
-  mainWindow.loadURL('about:blank');
+  // 'screen-saver' level keeps the button above fullscreen apps; must be set after construction.
+  floatingWindow.setAlwaysOnTop(true, "screen-saver");
+  floatingWindow.loadFile("floating.html");
+
+  // Only quit the app when the floating button itself is destroyed, not when chat closes.
+  floatingWindow.on("closed", () => {
+    floatingWindow = null;
+    app.quit();
+  });
 }
 
-app.whenReady().then(() => {
-  createWindow();
+function createChatWindow() {
+  const { width, height } = screen.getPrimaryDisplay().workAreaSize;
 
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+  chatWindow = new BrowserWindow({
+    width: CHAT.width,
+    height: CHAT.height,
+    x: Math.round((width - CHAT.width) / 2),
+    y: Math.round((height - CHAT.height) / 2),
+    show: false, // shown only on ready-to-show to avoid white flash and hit 200ms target
+    webPreferences,
+  });
+
+  chatWindow.loadFile("renderer.html");
+
+  // Show only when content is ready — this is what keeps click→visible under 200ms.
+  chatWindow.once("ready-to-show", () => chatWindow.show());
+
+  // Hide instead of destroy so the next open is instant (no re-parse of renderer.html).
+  chatWindow.on("close", (event) => {
+    event.preventDefault();
+    chatWindow.hide();
+  });
+}
+
+// --- Show/hide helpers (shared by IPC handler and global shortcut) ---
+
+function showChatWindow() {
+  if (!chatWindow) createChatWindow();
+  else chatWindow.show();
+}
+
+function hideChatWindow() {
+  if (chatWindow) chatWindow.hide();
+}
+
+// --- IPC: window management ---
+
+ipcMain.handle("openChatWindow", () => showChatWindow());
+ipcMain.handle("closeChatWindow", () => hideChatWindow());
+
+// --- IPC: stub pass-throughs (teammates replace stub bodies, not these handlers) ---
+
+ipcMain.handle("transcribe", (_e, blob) => stubs.transcribeAudio(blob));
+ipcMain.handle("getResponse", (_e, text) =>
+  stubs.getAssistantResponse(text, null),
+);
+ipcMain.handle("executeAction", (_e, action) => stubs.executeAction(action));
+ipcMain.handle("speak", (_e, text) => stubs.speak(text));
+ipcMain.handle("captureScreenshot", () => stubs.captureScreenshot());
+
+// logEvent and undoLast have no stub yet; Person 3 will implement the real undo log.
+ipcMain.handle("logEvent", (_e, event) => {
+  console.log("[EVENT]", event);
+  return { ok: true };
+});
+ipcMain.handle("undoLast", () => {
+  console.log("[UNDO]");
+  return { ok: true };
+});
+
+// --- App lifecycle ---
+
+app.whenReady().then(() => {
+  // Grant microphone permission automatically — Electron blocks it by default.
+  session.defaultSession.setPermissionRequestHandler(
+    (webContents, permission, callback) => {
+      if (permission === "media") {
+        callback(true);
+      } else {
+        callback(false);
+      }
+    },
+  );
+
+  createFloatingWindow();
+
+  // Ctrl+Space may conflict with some CJK input method editors (IMEs).
+  // If the demo machine uses a CJK IME, disable this shortcut before presenting.
+  globalShortcut.register("CommandOrControl+Space", () => showChatWindow());
+
+  app.on("activate", () => {
+    if (!floatingWindow) createFloatingWindow();
   });
 });
 
-app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit();
+app.on("window-all-closed", () => {
+  // Intentionally empty: quit lifecycle is managed via floatingWindow 'closed' above.
+});
+
+app.on("will-quit", () => {
+  globalShortcut.unregisterAll();
 });
