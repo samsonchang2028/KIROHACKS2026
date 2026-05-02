@@ -226,6 +226,8 @@ sendBtn.addEventListener("click", submitTextInput);
 function submitTextInput() {
   const text = textInput.value.trim();
   if (!text || currentState !== IDLE) return;
+  // Stop any in-progress speech when user submits text.
+  window.api.stopSpeaking();
   textInput.value = "";
   handleUserInput(text);
 }
@@ -247,6 +249,8 @@ async function startListening() {
     window.api.speak("I couldn't access your microphone.");
     return;
   }
+  // Stop any in-progress speech when user starts talking.
+  window.api.stopSpeaking();
   startRecording();
   setMicState(LISTENING);
 }

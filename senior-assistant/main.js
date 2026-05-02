@@ -101,6 +101,7 @@ ipcMain.handle("getResponse", (_e, text) =>
 );
 ipcMain.handle("executeAction", (_e, action) => stubs.executeAction(action));
 ipcMain.handle("speak", (_e, text) => stubs.speak(text));
+ipcMain.handle("stopSpeaking", () => stubs.stopSpeaking());
 ipcMain.handle("captureScreenshot", () => stubs.captureScreenshot());
 
 // logEvent and undoLast have no stub yet; Person 3 will implement the real undo log.

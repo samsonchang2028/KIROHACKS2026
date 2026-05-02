@@ -11,9 +11,9 @@
 //   speak               → Person 2 (TTS)                 ✅ IMPLEMENTED (OS native TTS)
 //   captureScreenshot   → Person 3 (screenshot capture)
 
-require('dotenv').config();
-const pipeline = require('./llm-integration/pipeline');
-const screenshotModule = require('./llm-integration/screenshot');
+require("dotenv").config();
+const pipeline = require("./llm-integration/pipeline");
+const screenshotModule = require("./llm-integration/screenshot");
 const path = require("path");
 const fs = require("fs");
 const os = require("os");
@@ -30,6 +30,103 @@ const WHISPER_MODEL = path.join(
   __dirname,
   "node_modules/whisper-node/lib/whisper.cpp/models/ggml-base.bin",
 );
+
+// ---------------------------------------------------------------------------
+// Filler word stripping — cleans up natural speech before displaying
+// ---------------------------------------------------------------------------
+
+const FILLER_WORDS = [
+  "you know",
+  "sort of",
+  "kind of",
+  "i mean",
+  "i guess",
+  "actually",
+  "basically",
+  "literally",
+  "honestly",
+  "um",
+  "uh",
+  "hmm",
+  "ah",
+  "oh",
+  "like",
+];
+
+// Build a single regex matching any filler as a whole word (case-insensitive).
+// Longer phrases listed first so "you know" matches before "you".
+const _FILLER_RE = new RegExp(
+  "\\b(?:" +
+    FILLER_WORDS.map((f) => f.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join(
+      "|",
+    ) +
+    ")\\b",
+  "gi",
+);
+
+function stripFillers(text) {
+  return text
+    .replace(_FILLER_RE, "")
+    .replace(/\s{2,}/g, " ") // collapse double spaces left by removed fillers
+    .replace(/^\s*,\s*/, "") // strip leading comma residue
+    .replace(/\s*,\s*$/, "") // strip trailing comma residue
+    .trim();
+}
+
+// ---------------------------------------------------------------------------
+// Whisper model warm-up — pre-loads the model so first transcription is fast
+// ---------------------------------------------------------------------------
+
+function warmUpWhisper() {
+  if (!fs.existsSync(WHISPER_BIN) || !fs.existsSync(WHISPER_MODEL)) {
+    console.warn(
+      "[warmup] Whisper binary or model not found, skipping warm-up.",
+    );
+    return;
+  }
+
+  // Generate a tiny 0.5s silent WAV and run whisper on it.
+  // This forces the model into memory so the first real call is fast.
+  const tmpWav = path.join(os.tmpdir(), "whisper-warmup.wav");
+  const sr = 16000,
+    ns = sr / 2,
+    ds = ns * 2;
+  const buf = Buffer.alloc(44 + ds);
+  buf.write("RIFF", 0);
+  buf.writeUInt32LE(36 + ds, 4);
+  buf.write("WAVE", 8);
+  buf.write("fmt ", 12);
+  buf.writeUInt32LE(16, 16);
+  buf.writeUInt16LE(1, 20);
+  buf.writeUInt16LE(1, 22);
+  buf.writeUInt32LE(sr, 24);
+  buf.writeUInt32LE(sr * 2, 28);
+  buf.writeUInt16LE(2, 32);
+  buf.writeUInt16LE(16, 34);
+  buf.write("data", 36);
+  buf.writeUInt32LE(ds, 40);
+  fs.writeFileSync(tmpWav, buf);
+
+  try {
+    console.log("[warmup] Pre-loading Whisper model...");
+    execSync(
+      `"${WHISPER_BIN}" -m "${WHISPER_MODEL}" -f "${tmpWav}" -l en --no-timestamps -t 4 2>/dev/null`,
+      { timeout: 30000 },
+    );
+    console.log("[warmup] Whisper model loaded.");
+  } catch (_) {
+    console.warn("[warmup] Whisper warm-up failed (non-critical).");
+  } finally {
+    try {
+      fs.unlinkSync(tmpWav);
+    } catch (_) {
+      /* ignore */
+    }
+  }
+}
+
+// Kick off warm-up in the background — don't block module loading.
+setTimeout(warmUpWhisper, 1000);
 
 // ---------------------------------------------------------------------------
 // transcribeAudio — Person 2 (local Whisper STT via whisper.cpp)
@@ -94,14 +191,18 @@ async function transcribeAudio(blob) {
 
       // The transcript is everything after the model loading output.
       // With --no-timestamps, whisper.cpp prints plain text lines.
-      const text = raw
+      const rawText = raw
         .split("\n")
         .map((l) => l.trim())
         .filter((l) => l && !l.startsWith("[BLANK_AUDIO]"))
         .join(" ")
         .trim();
 
-      console.log("[transcribeAudio] Result:", text);
+      // Strip filler words for cleaner display and better AI understanding.
+      const text = stripFillers(rawText);
+
+      console.log("[transcribeAudio] Raw:", rawText);
+      console.log("[transcribeAudio] Cleaned:", text);
       return text;
     } catch (whisperErr) {
       console.error(
@@ -271,12 +372,6 @@ function stopSpeaking() {
 // action is either null (no system change needed) or { name, params } from the locked 8-action catalog.
 async function getAssistantResponse(text, screenshot) {
   return pipeline.handleQuery(text, screenshot);
-  await delay(800);
-  return {
-    speak: "I can make your text bigger. Should I do that?",
-    action: { name: "setTextSize", params: { scale: 150 } },
-    requiresConfirmation: true,
-  };
 }
 
 // Executes a system action from the 8-action catalog.
