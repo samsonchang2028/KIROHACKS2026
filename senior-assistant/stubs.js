@@ -279,12 +279,73 @@ async function getAssistantResponse(text, screenshot) {
   };
 }
 
-// Executes a system action from the 8-action catalog.
-// Replace body with real Windows automation; { name, params } shape must stay identical.
+// Executes a system action from the 8-action catalog using NirCmd for Windows automation.
+const NIRCMD = path.join(__dirname, "nircmd.exe");
+
 async function executeAction(action) {
-  await delay(600);
+  if (!action || !action.name) return { success: false };
+
   console.log("[ACTION]", action);
-  return { success: true };
+
+  try {
+    switch (action.name) {
+      case "setVolume": {
+        // NirCmd setvolume: 0 = master, value range 0–65535
+        const rawLevel = typeof action.params === 'number'
+          ? action.params
+          : (action.params?.level ?? 0);
+        const level = Math.round(rawLevel / 100 * 65535);
+        const cmd = `"${NIRCMD}" setvolume 0 ${level} ${level}`;
+        console.log("[ACTION] running:", cmd);
+        const output = execSync(cmd, { encoding: 'utf8', stdio: 'pipe' });
+        console.log("[ACTION] nircmd output:", output || '(no output — success)');
+        break;
+      }
+      case "setBrightness": {
+        // NirCmd setbrightness: 0–100
+        const rawBrightness = typeof action.params === 'number'
+          ? action.params
+          : (action.params?.level ?? 50);
+        execSync(`"${NIRCMD}" setbrightness ${rawBrightness}`);
+        break;
+      }
+      case "setTextSize": {
+        // Windows display scaling via registry + rundll32 refresh
+        const scale = action.params?.scale ?? 150;
+        // DPI values: 100%=96, 125%=120, 150%=144, 175%=168, 200%=192
+        const dpiMap = { 100: 96, 125: 120, 150: 144, 175: 168, 200: 192 };
+        const dpi = dpiMap[scale] ?? 144;
+        execSync(
+          `reg add "HKCU\\Control Panel\\Desktop" /v LogPixels /t REG_DWORD /d ${dpi} /f && ` +
+          `rundll32.exe user32.dll,UpdatePerUserSystemParameters`
+        );
+        break;
+      }
+      case "openApp": {
+        const name = action.params?.name ?? "";
+        execSync(`start "" "${name}"`, { shell: true });
+        break;
+      }
+      case "closeActiveWindow": {
+        execSync(`"${NIRCMD}" win close foreground`);
+        break;
+      }
+      case "closeScamPopup": {
+        execSync(`"${NIRCMD}" win close foreground`);
+        break;
+      }
+      case "readScreenAloud":
+      case "sendHelpToFamily":
+      case null:
+      default:
+        // No system action needed or not yet implemented
+        break;
+    }
+    return { success: true };
+  } catch (err) {
+    console.error("[ACTION] executeAction failed:", err.message);
+    return { success: false, error: err.message };
+  }
 }
 
 // Captures a screenshot of the current screen for AI vision context.

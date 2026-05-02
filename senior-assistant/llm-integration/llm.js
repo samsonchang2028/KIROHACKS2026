@@ -21,8 +21,8 @@ Respond ONLY with valid JSON. No markdown. No explanation outside the JSON.
 
 ALLOWED ACTIONS:
 - setTextSize(scale)     scale must be one of: 100, 125, 150, 175, 200
-- setBrightness(level)   level 0–100
-- setVolume(level)       level 0–100
+- setBrightness(level)   level 0–100, ALWAYS return params as {"level": <number>}
+- setVolume(level)       level 0–100, ALWAYS return params as {"level": <number>} (mute = 0, full = 100)
 - openApp(name)          name is a string like "chrome" or "notepad"
 - closeActiveWindow()    no params
 - closeScamPopup()       no params

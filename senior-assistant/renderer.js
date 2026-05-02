@@ -88,6 +88,8 @@ function stopRecording() {
 const statusEl = document.getElementById("status-text");
 const micArea = document.getElementById("mic-area");
 const messagesEl = document.getElementById("messages");
+const textInput = document.getElementById("text-input");
+const sendBtn = document.getElementById("send-btn");
 
 // --- Message rendering ---
 
@@ -268,3 +270,43 @@ async function executeAndFinish(action) {
 // Request mic access immediately so the first recording starts without delay.
 initMic();
 setMicState(IDLE);
+
+// --- Text input ---
+
+async function handleTextSend() {
+  const text = textInput.value.trim();
+  if (!text || currentState !== IDLE) return;
+
+  textInput.value = '';
+  sendBtn.disabled = true;
+  setMicState(THINKING);
+  renderMessage("user", text);
+
+  try {
+    const response = await window.api.getResponse(text);
+    console.log('[DEBUG] response:', JSON.stringify(response));
+    renderMessage("assistant", response.speak);
+    window.api.speak(response.speak);
+
+    if (response.requiresConfirmation && response.action) {
+      setMicState(CONFIRMING, {
+        question: response.speak,
+        action: response.action,
+      });
+    } else {
+      setMicState(DOING);
+      await executeAndFinish(response.action);
+    }
+  } catch (err) {
+    renderMessage("assistant", "Sorry, something went wrong. Want me to try again?");
+    window.api.speak("Sorry, something went wrong.");
+    setMicState(IDLE);
+  } finally {
+    sendBtn.disabled = false;
+  }
+}
+
+sendBtn.addEventListener("click", handleTextSend);
+textInput.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") handleTextSend();
+});

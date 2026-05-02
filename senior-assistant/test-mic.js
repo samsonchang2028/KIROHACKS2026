@@ -66,10 +66,10 @@ async function main() {
   setTimeout(() => {
     try {
       fs.unlinkSync(TMP_RAW);
-    } catch (_) {}
+    } catch (_) { }
     try {
       fs.unlinkSync(TMP_WAV);
-    } catch (_) {}
+    } catch (_) { }
     process.exit(0);
   }, 8000);
 }

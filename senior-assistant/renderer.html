@@ -1,15 +1,23 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; media-src 'self' blob:" />
+  <meta http-equiv="Content-Security-Policy"
+    content="default-src 'self'; style-src 'self' 'unsafe-inline'; media-src 'self' blob:" />
   <link rel="stylesheet" href="styles.css" />
 </head>
+
 <body>
   <header id="header">Helper</header>
   <main id="messages"></main>
   <div id="status-text">Tap to talk</div>
   <div id="mic-area"></div>
+  <div id="text-input-area">
+    <input type="text" id="text-input" placeholder="Or type here and press Enter..." autocomplete="off" />
+    <button id="send-btn">Send</button>
+  </div>
   <script src="renderer.js"></script>
 </body>
+
 </html>
