@@ -1,0 +1,13 @@
+{
+  "name": "Accessibility Check on UI Write",
+  "version": "1.0.0",
+  "description": "Prompts the agent to verify accessibility standards after any UI file is written",
+  "when": {
+    "type": "postToolUse",
+    "toolTypes": ["write"]
+  },
+  "then": {
+    "type": "askAgent",
+    "prompt": "A file was just written. If it was a UI file (HTML, CSS, or renderer JS), verify it meets the project's accessibility requirements: all body text is minimum 20pt, all tap targets are minimum 80px tall (mic button 120px), high contrast colors only (no light gray on white), no icons without text labels, and no nested menus. Flag any violations found."
+  }
+}
