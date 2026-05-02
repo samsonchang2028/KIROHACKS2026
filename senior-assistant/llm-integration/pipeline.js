@@ -104,6 +104,24 @@ function nearestScale(value) {
 let llm = require('./llm');
 let screenshot = require('./screenshot');
 
+// --- Conversation history (in-memory only, never written to disk) ---
+// Keeps the last few exchanges so the LLM can handle follow-ups and clarifications.
+// Cleared when the app closes — no persistence across sessions.
+const MAX_HISTORY = 10; // max messages to keep (user + assistant pairs)
+let conversationHistory = [];
+
+function addToHistory(role, content) {
+    conversationHistory.push({ role, content });
+    // Trim to keep only the last MAX_HISTORY messages
+    if (conversationHistory.length > MAX_HISTORY) {
+        conversationHistory = conversationHistory.slice(-MAX_HISTORY);
+    }
+}
+
+function clearHistory() {
+    conversationHistory = [];
+}
+
 /**
  * Main pipeline entry point. Called from main.js IPC handler.
  *
@@ -113,8 +131,11 @@ let screenshot = require('./screenshot');
  */
 async function handleQuery(userMessage) {
     try {
-        // Step 1: Text query to get initial action
-        let parsed = await llm.textQuery(userMessage);
+        // Add user message to conversation history
+        addToHistory('user', userMessage);
+
+        // Step 1: Text query with conversation history
+        let parsed = await llm.textQuery(userMessage, conversationHistory.slice(0, -1));
 
         // Step 2: If the LLM needs a screenshot, capture and re-query with vision
         if (parsed.action === 'needs_screenshot') {
@@ -127,7 +148,7 @@ async function handleQuery(userMessage) {
             }
 
             // Call vision query (with or without screenshot — if null, pass empty string)
-            parsed = await llm.visionQuery(userMessage, base64 || '');
+            parsed = await llm.visionQuery(userMessage, base64 || '', conversationHistory.slice(0, -1));
         }
 
         // Step 3: Validate action against allowlist — never trust LLM output
@@ -157,6 +178,9 @@ async function handleQuery(userMessage) {
             ? null
             : { name: action, params };
 
+        // Add assistant reply to conversation history
+        addToHistory('assistant', reply);
+
         return {
             speak: reply,
             action: executableAction,
@@ -174,7 +198,7 @@ async function handleQuery(userMessage) {
     }
 }
 
-module.exports = { handleQuery, validateAction, clampLevel, nearestScale, ALLOWED_ACTIONS, REQUIRES_CONFIRMATION };
+module.exports = { handleQuery, clearHistory, validateAction, clampLevel, nearestScale, ALLOWED_ACTIONS, REQUIRES_CONFIRMATION };
 
 // =============================================================================
 // Property tests — run with: node pipeline.js  (from senior-assistant/llm-integration/)

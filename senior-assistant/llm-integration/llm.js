@@ -42,7 +42,9 @@ RULES:
 - Never include code, commands, or URLs in your response.
 - The reply field must be warm, short (under 15 words), and spoken aloud to the user.
 - If the user mentions a popup, virus warning, or scary message, use closeScamPopup.
-- If the user mentions text being small or hard to read, use setTextSize with scale 150 as a safe default.`;
+- If the user mentions text being small or hard to read, use setTextSize with scale 150 as a safe default.
+- For openApp: if the app name looks misspelled or you're not sure what app they mean, use clarify to ask. For example "open drrrcket" should respond with clarify: "Did you mean DrRacket?" When the user confirms, use openApp with the corrected name.
+- params must ALWAYS be a JSON object like {"level": 80} or {"name": "chrome"}, never a bare string or number.`;
 
 // Shared request headers — sent on every OpenRouter request
 // x-or-policy: no-training ensures zero data retention (primary privacy control)
@@ -70,16 +72,20 @@ const SHARED_OPTIONS = {
  * Uses anthropic/claude-3-haiku via OpenRouter.
  *
  * @param {string} userMessage
+ * @param {Array} history — previous conversation messages [{role, content}, ...]
  * @returns {Promise<{ action: string, params: object|null, reply: string }>}
  * @throws on non-2xx HTTP status or JSON parse failure
  */
-async function textQuery(userMessage) {
+async function textQuery(userMessage, history = []) {
+    const messages = [
+        { role: 'system', content: SYSTEM_PROMPT },
+        ...history,
+        { role: 'user', content: userMessage },
+    ];
+
     const body = {
         model: 'anthropic/claude-3-haiku',
-        messages: [
-            { role: 'system', content: SYSTEM_PROMPT },
-            { role: 'user', content: userMessage },
-        ],
+        messages,
         ...SHARED_OPTIONS,
     };
 
@@ -108,22 +114,26 @@ async function textQuery(userMessage) {
  *
  * @param {string} userMessage
  * @param {string} screenshotBase64 — raw base64 PNG string (no data URI prefix)
+ * @param {Array} history — previous conversation messages [{role, content}, ...]
  * @returns {Promise<{ action: string, params: object|null, reply: string }>}
  * @throws on non-2xx HTTP status or JSON parse failure
  */
-async function visionQuery(userMessage, screenshotBase64) {
+async function visionQuery(userMessage, screenshotBase64, history = []) {
+    const messages = [
+        { role: 'system', content: SYSTEM_PROMPT },
+        ...history,
+        {
+            role: 'user',
+            content: [
+                { type: 'text', text: userMessage },
+                { type: 'image_url', image_url: { url: `data:image/png;base64,${screenshotBase64}` } },
+            ],
+        },
+    ];
+
     const body = {
         model: 'openai/gpt-4o-mini',
-        messages: [
-            { role: 'system', content: SYSTEM_PROMPT },
-            {
-                role: 'user',
-                content: [
-                    { type: 'text', text: userMessage },
-                    { type: 'image_url', image_url: { url: `data:image/png;base64,${screenshotBase64}` } },
-                ],
-            },
-        ],
+        messages,
         ...SHARED_OPTIONS,
     };
 

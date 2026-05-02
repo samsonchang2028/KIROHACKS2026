@@ -57,10 +57,10 @@ const FILLER_WORDS = [
 // Longer phrases listed first so "you know" matches before "you".
 const _FILLER_RE = new RegExp(
   "\\b(?:" +
-    FILLER_WORDS.map((f) => f.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join(
-      "|",
-    ) +
-    ")\\b",
+  FILLER_WORDS.map((f) => f.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join(
+    "|",
+  ) +
+  ")\\b",
   "gi",
 );
 
@@ -377,6 +377,71 @@ async function getAssistantResponse(text, screenshot) {
 // Executes a system action from the 8-action catalog using NirCmd for Windows automation.
 const NIRCMD = path.join(__dirname, "nircmd.exe");
 
+// ---------------------------------------------------------------------------
+// findInstalledApp — searches Windows Start Menu for a fuzzy match
+// ---------------------------------------------------------------------------
+
+function findInstalledApp(query) {
+  const searchDirs = [
+    path.join(os.homedir(), "AppData", "Roaming", "Microsoft", "Windows", "Start Menu", "Programs"),
+    "C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs",
+  ];
+
+  const shortcuts = [];
+
+  // Recursively collect all .lnk files from Start Menu
+  function walk(dir) {
+    try {
+      const entries = fs.readdirSync(dir, { withFileTypes: true });
+      for (const entry of entries) {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) walk(full);
+        else if (entry.name.endsWith(".lnk")) {
+          shortcuts.push({ name: entry.name.replace(".lnk", ""), path: full });
+        }
+      }
+    } catch (_) { /* skip inaccessible dirs */ }
+  }
+
+  for (const dir of searchDirs) walk(dir);
+
+  // Also search for Microsoft Store / UWP apps via PowerShell
+  try {
+    const psCmd = `powershell -NoProfile -Command "Get-StartApps | Where-Object { $_.Name -like '*${query.replace(/'/g, "''")}*' } | Select-Object -First 1 -ExpandProperty AppID"`;
+    const appId = execSync(psCmd, { encoding: 'utf8', timeout: 5000 }).trim();
+    if (appId) {
+      console.log(`[ACTION] Found UWP app: "${appId}" for query "${query}"`);
+      return `shell:AppsFolder\\${appId}`;
+    }
+  } catch (_) { /* Get-StartApps not available or no match */ }
+
+  if (shortcuts.length === 0) return null;
+
+  const q = query.toLowerCase();
+
+  // Exact match first
+  const exact = shortcuts.find(s => s.name.toLowerCase() === q);
+  if (exact) return exact.path;
+
+  // Contains match
+  const contains = shortcuts.find(s => s.name.toLowerCase().includes(q));
+  if (contains) return contains.path;
+
+  // Fuzzy: query chars appear in order in the shortcut name
+  const fuzzy = shortcuts.find(s => {
+    const sLower = s.name.toLowerCase();
+    let qi = 0;
+    for (let si = 0; si < sLower.length && qi < q.length; si++) {
+      if (sLower[si] === q[qi]) qi++;
+    }
+    return qi === q.length;
+  });
+  if (fuzzy) return fuzzy.path;
+
+  return null;
+}
+
+
 async function executeAction(action) {
   if (!action || !action.name) return { success: false };
 
@@ -417,8 +482,55 @@ async function executeAction(action) {
         break;
       }
       case "openApp": {
-        const name = action.params?.name ?? "";
-        execSync(`start "" "${name}"`, { shell: true });
+        // Handle both { name: 'chrome' } and bare string 'chrome'
+        const rawName = typeof action.params === 'string'
+          ? action.params
+          : (action.params?.name ?? "");
+        const name = rawName.toLowerCase().trim();
+
+        if (!name) {
+          return { success: false, error: "No app name provided" };
+        }
+
+        // Map common names to executables
+        const appMap = {
+          chrome: "chrome", "google chrome": "chrome",
+          firefox: "firefox",
+          edge: "msedge", "microsoft edge": "msedge",
+          notepad: "notepad",
+          calculator: "calc", calc: "calc",
+          paint: "mspaint",
+          word: "winword", excel: "excel", powerpoint: "powerpnt", outlook: "outlook",
+          "file explorer": "explorer", explorer: "explorer",
+          settings: "ms-settings:",
+          "task manager": "taskmgr",
+          cmd: "cmd", terminal: "wt",
+          // UWP / Store apps use shell:AppsFolder launch
+          spotify: "spotify:",
+          netflix: "netflix:",
+        };
+
+        // Try known app map first
+        if (appMap[name]) {
+          try {
+            console.log(`[ACTION] openApp: "${name}" -> "${appMap[name]}" (known app)`);
+            execSync(`start "" "${appMap[name]}"`, { shell: true, timeout: 5000 });
+            break;
+          } catch (_) {
+            console.log(`[ACTION] known app "${appMap[name]}" failed, trying Start Menu search...`);
+          }
+        }
+
+        // Search Start Menu for installed apps
+        const match = findInstalledApp(name);
+        if (match) {
+          console.log(`[ACTION] openApp: "${name}" -> "${match}" (Start Menu)`);
+          execSync(`start "" "${match}"`, { shell: true, timeout: 5000 });
+        } else {
+          // Last resort — try the raw name
+          console.log(`[ACTION] openApp: "${name}" -> trying raw name`);
+          execSync(`start "" "${name}"`, { shell: true, timeout: 5000 });
+        }
         break;
       }
       case "closeActiveWindow": {
