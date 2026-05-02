@@ -27,6 +27,11 @@ The system prioritizes safety, reversibility, and trust above all else. It never
 - **Safety_Level**: A classification of each Action as `low`, `medium`, or `high` risk.
 - **Floating_UI**: The persistent, always-on-top overlay window through which the User interacts with the Assistant.
 - **System_Tray**: The Windows notification area icon providing quick access to the Assistant.
+- **Tool_Catalog**: The fixed set of low-level, parameterized system commands available to the Action_Executor. Tool_Catalog entries are not directly selectable by the LLM; they are invoked only by the Action_Executor as part of carrying out an Action.
+- **Command_Logger**: The component responsible for recording every Tool_Catalog execution with a timestamp, tool name, and sanitized parameters in a local, human-readable log file.
+- **Microphone_Test**: A guided audio check performed during onboarding that confirms the microphone is receiving input and that the Voice_Input subsystem can transcribe speech, providing both spoken and visual confirmation to the user.
+- **Push_To_Talk**: An optional interaction mode in which the user holds a visible button in the Floating_UI to activate listening, as an alternative to the always-on wake-word mode.
+- **Language_Mapping**: A structured, editable synonym and phrase mapping layer that maps common user-friendly phrases to specific Action_Catalog entries, consulted by the Intent_Engine before invoking the LLM.
 
 ---
 
@@ -43,6 +48,7 @@ The system prioritizes safety, reversibility, and trust above all else. It never
 3. WHERE the user prefers text input, THE Assistant SHALL accept typed natural-language requests through a visible text field in the Floating_UI.
 4. IF the Voice_Input fails to produce a transcription within 5 seconds of speech ending, THEN THE Assistant SHALL prompt the user to repeat their request using a calm spoken message.
 5. THE Assistant SHALL accept requests in plain, conversational English without requiring specific phrasing or command syntax.
+6. THE Voice_Input SHALL tolerate slow speech, long pauses between words, and incomplete sentences without prematurely cutting off or discarding the user's input before the user has finished speaking.
 
 ---
 
@@ -250,3 +256,59 @@ The system prioritizes safety, reversibility, and trust above all else. It never
 4. WHEN onboarding is complete, THE Assistant SHALL perform a brief demonstration of its core capabilities using a sample interaction.
 5. THE Assistant SHALL allow the user to re-run the onboarding flow at any time from the System_Tray menu.
 
+
+---
+
+### Requirement 16: Voice Interaction Accessibility
+
+**User Story:** As a senior user with slow or hesitant speech, I want the assistant to listen patiently and confirm it heard me correctly, so that I feel confident using voice input without fear of being misunderstood or cut off.
+
+#### Acceptance Criteria
+
+1. WHEN the Assistant is launched for the first time, THE Microphone_Test SHALL play a spoken prompt asking the user to say a short phrase and SHALL display a visual confirmation (e.g., animated waveform and "I heard you!") once the phrase is successfully transcribed.
+2. IF the Microphone_Test does not detect audio input within 15 seconds, THEN THE Assistant SHALL display a troubleshooting prompt in large text and offer to proceed with text-only input.
+3. WHEN the Assistant is in listening mode, THE Floating_UI SHALL display a large, clearly labeled "Listening…" indicator using both a prominent visual state change and a text label visible at a minimum font size of 24pt.
+4. WHERE the user has enabled audio cues, THE Assistant SHALL play a distinct, non-startling sound when listening begins and a separate sound when listening ends.
+5. THE Voice_Input SHALL tolerate slow speech, long pauses between words, and incomplete sentences without prematurely cutting off or discarding the user's input before the user has finished speaking.
+6. WHEN the Voice_Input transcription confidence is below the configured threshold, THE Assistant SHALL repeat the transcribed phrase back to the user and ask "Did you mean: [phrase]?" before proceeding.
+7. THE Assistant SHALL recognize and respond to the following voice control commands at all times: "stop", "cancel", "go back", "say that again", and "listen again".
+8. WHERE the user prefers Push_To_Talk, THE Floating_UI SHALL display a clearly labeled button that activates listening only while held or toggled, as an alternative to always-on wake-word mode.
+9. THE Assistant SHALL always provide a visible text input field in the Floating_UI as a fallback interaction mode, regardless of microphone availability.
+10. WHEN the Assistant receives a request and processing will take more than 1 second, THE TTS_Engine SHALL immediately speak an acknowledgment such as "I'm listening" or "Let me check that" to prevent user uncertainty during processing.
+11. THE Voice_Input subsystem SHALL tolerate moderate background audio (e.g., television at conversational volume) without triggering false wake-word activations more than once per hour under typical home conditions.
+
+---
+
+### Requirement 17: System Command and Tooling Layer
+
+**User Story:** As a system designer, I want a controlled, auditable command execution layer beneath the Action_Catalog, so that all low-level system interactions are predefined, parameterized, and never constructed from user input at runtime.
+
+#### Acceptance Criteria
+
+1. THE Tool_Catalog SHALL contain a fixed set of predefined, parameterized system commands including at minimum: `scan_installed_applications`, `query_display_settings`, `get_volume_level`, `set_volume_level`, `enumerate_running_processes`, `read_registry_value`, `list_start_menu_entries`, and `list_program_files_directories`.
+2. THE Action_Executor SHALL be the only component permitted to invoke Tool_Catalog entries; THE Intent_Engine and LLM SHALL NOT directly select or invoke tools.
+3. THE Action_Executor SHALL validate all parameters passed to a Tool_Catalog entry against a defined type and value schema before execution, and SHALL reject any invocation where parameters fail validation.
+4. THE Action_Executor SHALL NOT construct shell commands or script strings dynamically from user input; all Tool_Catalog entries SHALL use parameterized invocation patterns (e.g., PowerShell cmdlets with typed arguments or Windows API calls).
+5. WHEN a Tool_Catalog entry is executed, THE Command_Logger SHALL record a log entry containing: timestamp, tool name, sanitized parameter values, and execution outcome (success or failure code).
+6. THE Command_Logger SHALL write log entries to a local, human-readable plain-text file and SHALL retain logs for a minimum of 30 days before automatic rotation.
+7. THE App_Catalog scanning process SHALL use the `scan_installed_applications`, `list_start_menu_entries`, `list_program_files_directories`, and `read_registry_value` tools to discover installed applications across Start Menu shortcuts, the Windows registry (`HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall`), and standard Program Files directories.
+8. THE App_Catalog SHALL normalize discovered application entries into a consistent alias-to-executable mapping, deduplicating entries that refer to the same executable path.
+9. IF a Tool_Catalog entry fails due to a system permission error, THEN THE Action_Executor SHALL log the failure via the Command_Logger and report the error to the Assistant without retrying automatically.
+10. THE Tool_Catalog SHALL be defined in a static configuration file that is loaded at startup; new tools SHALL NOT be added or modified at runtime.
+
+---
+
+### Requirement 18: User Language Mapping
+
+**User Story:** As a senior user, I want the assistant to understand the everyday phrases I naturally use to describe what I want, so that common requests are recognized instantly without relying solely on AI interpretation.
+
+#### Acceptance Criteria
+
+1. THE Language_Mapping SHALL define a structured, editable mapping of user-friendly phrases and synonyms to Action_Catalog entries, including at minimum: "take a picture of my screen" → `take_screenshot`, "make it louder" → `set_volume`, "turn it up" → `set_volume`, "I can't see anything" → `increase_text_size` or `set_brightness`, "open the internet" → `open_app`, and "make the writing bigger" → `increase_text_size`.
+2. WHEN the Intent_Engine receives user input, THE Intent_Engine SHALL consult the Language_Mapping before passing the input to the LLM, and SHALL use the mapped Action directly if a match is found with sufficient confidence.
+3. THE Language_Mapping SHALL be stored in a structured, human-readable configuration file (e.g., JSON or YAML) that can be edited without modifying application code or recompiling the Assistant.
+4. THE Language_Mapping SHALL support multiple synonym phrases per Action_Catalog entry and SHALL allow partial phrase matching for common variations.
+5. WHEN a Language_Mapping match is used to resolve a request, THE Intent_Engine SHALL log the matched phrase and the resolved Action to support future mapping improvements.
+6. THE Command_Logger SHALL record Language_Mapping usage events with the matched phrase (anonymized of any personal content) and the resolved Action, so that unmapped phrases can be identified and added in future updates.
+7. IF no Language_Mapping match is found, THEN THE Intent_Engine SHALL proceed to LLM-based intent resolution as defined in Requirement 3.
+8. THE Language_Mapping configuration file SHALL be reloadable at runtime without restarting the Assistant, allowing updates to take effect immediately after the file is saved.
