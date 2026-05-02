@@ -18,4 +18,8 @@ contextBridge.exposeInMainWorld("api", {
   closeChatWindow: () => ipcRenderer.invoke("closeChatWindow"),
   logEvent: (event) => ipcRenderer.invoke("logEvent", event),
   undoLast: () => ipcRenderer.invoke("undoLast"),
+  // Title bar window controls
+  winMinimize: () => ipcRenderer.invoke("win-minimize"),
+  winMaximize: () => ipcRenderer.invoke("win-maximize"),
+  winClose: () => ipcRenderer.invoke("win-close"),
 });

@@ -8,9 +8,25 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 
-<body>
+<body class="window-opening">
+  <!-- Custom Win11-style title bar (frameless window) -->
+  <div id="title-bar">
+    <div id="title-bar-left">
+      <div id="title-bar-icon">✦</div>
+      <span id="title-bar-text">Helper — Your Computer Assistant</span>
+    </div>
+    <div id="title-bar-controls">
+      <button class="tb-btn" id="tb-minimize" aria-label="Minimize">─</button>
+      <button class="tb-btn" id="tb-maximize" aria-label="Maximize">□</button>
+      <button class="tb-btn tb-close" id="tb-close" aria-label="Close">✕</button>
+    </div>
+  </div>
+
+  <!-- Doing progress bar — visible only during DOING state -->
+  <div id="doing-bar"><div id="doing-bar-fill"></div></div>
+
   <main id="messages">
-    <!-- Header scrolls with messages — doesn't eat permanent vertical space -->
+    <!-- Header scrolls with messages -->
     <div id="header">
       <span id="header-icon">✦</span>
       <span id="header-title">Helper</span>
@@ -18,15 +34,31 @@
 
     <!-- Onboarding hint — hidden permanently after first message is sent -->
     <div id="hint">Tap <strong>Speak</strong> or type below to ask for help.</div>
+
+    <!-- Quick suggestion chips — hidden with hint after first message -->
+    <div id="chips">
+      <button class="chip">My text is too small</button>
+      <button class="chip">Close this scary popup</button>
+      <button class="chip">Open Chrome</button>
+      <button class="chip">Turn up the volume</button>
+      <button class="chip">Screen is too dark</button>
+    </div>
+
+    <!-- Typing indicator — shown during THINKING state -->
+    <div id="typing-indicator" class="hidden">
+      <span class="typing-dot"></span>
+      <span class="typing-dot"></span>
+      <span class="typing-dot"></span>
+    </div>
   </main>
 
-  <!-- Status line: only visible while assistant is active (empty = hidden) -->
+  <!-- Status line -->
   <div id="status-text" aria-live="polite"></div>
 
-  <!-- Yes/No confirmation buttons — injected here during confirming state -->
+  <!-- Yes/No confirmation buttons -->
   <div id="mic-area"></div>
 
-  <!-- Bottom input bar: text input + Send + Speak in one unified row -->
+  <!-- Bottom input bar -->
   <div id="input-row">
     <textarea id="text-input" placeholder="Type your question here..." rows="2"
       aria-label="Type your question"></textarea>
