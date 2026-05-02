@@ -1,15 +1,43 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; media-src 'self' blob:" />
+  <meta http-equiv="Content-Security-Policy"
+    content="default-src 'self'; style-src 'self' 'unsafe-inline'; media-src 'self' blob:" />
   <link rel="stylesheet" href="styles.css" />
 </head>
+
 <body>
-  <header id="header">Helper</header>
-  <main id="messages"></main>
-  <div id="status-text">Tap to talk</div>
+  <main id="messages">
+    <!-- Header scrolls with messages — doesn't eat permanent vertical space -->
+    <div id="header">
+      <span id="header-icon">✦</span>
+      <span id="header-title">Helper</span>
+    </div>
+
+    <!-- Onboarding hint — hidden permanently after first message is sent -->
+    <div id="hint">Tap <strong>Speak</strong> or type below to ask for help.</div>
+  </main>
+
+  <!-- Status line: only visible while assistant is active (empty = hidden) -->
+  <div id="status-text" aria-live="polite"></div>
+
+  <!-- Yes/No confirmation buttons — injected here during confirming state -->
   <div id="mic-area"></div>
+
+  <!-- Bottom input bar: text input + Send + Speak in one unified row -->
+  <div id="input-row">
+    <textarea id="text-input" placeholder="Type your question here..." rows="2"
+      aria-label="Type your question"></textarea>
+    <button id="send-btn" aria-label="Send message">Send</button>
+    <button id="voice-btn" aria-label="Start or stop voice input">
+      <span id="voice-icon">🎤</span>
+      <span id="voice-label">Speak</span>
+    </button>
+  </div>
+
   <script src="renderer.js"></script>
 </body>
+
 </html>

@@ -2,41 +2,37 @@
 
 AI-powered desktop accessibility assistant for seniors.
 
-## Setup
+## Quick Setup
 
 ```bash
+# 1. Install system dependencies
+# macOS:
+brew install ffmpeg
+pip install edge-tts
+
+# Windows:
+choco install ffmpeg -y
+pip install edge-tts
+
+# 2. Install Node dependencies + Whisper model (automatic)
 cd senior-assistant
 npm install
-```
 
-### System dependencies
+# 3. Add your API key
+cp .env.example .env
+# Edit .env and add OPENROUTER_API_KEY
 
-**ffmpeg** (required) — used to convert audio formats for Whisper transcription:
-
-```bash
-# macOS
-brew install ffmpeg
-
-# Windows (via chocolatey)
-choco install ffmpeg
-```
-
-**sox** (optional) — only needed if you want to test speech-to-text from the command line:
-
-```bash
-# macOS
-brew install sox
-
-# Then run the mic test:
-node test-mic.js
-```
-
-## Run the app
-
-```bash
-cd senior-assistant
+# 4. Run
 npm start
 ```
+
+## System Dependencies
+
+| Dependency      | Required    | Install                                                               |
+| --------------- | ----------- | --------------------------------------------------------------------- |
+| ffmpeg          | Yes         | `brew install ffmpeg` (Mac) / `choco install ffmpeg` (Win)            |
+| edge-tts        | Recommended | `pip install edge-tts` (all platforms)                                |
+| C++ build tools | Yes         | `xcode-select --install` (Mac) / `npm i -g windows-build-tools` (Win) |
 
 ## Architecture
 
@@ -44,10 +40,17 @@ See `.kiro/specs/kiro-accessibility-assistant/requirements.md` for the full spec
 
 Stub functions in `stubs.js` are the integration boundary:
 
-| Function                                 | Owner    | Status                         |
-| ---------------------------------------- | -------- | ------------------------------ |
-| `transcribeAudio(blob)`                  | Person 2 | ✅ Local Whisper (whisper.cpp) |
-| `speak(text)`                            | Person 2 | ✅ OS native TTS               |
-| `getAssistantResponse(text, screenshot)` | Person 3 | Stub                           |
-| `executeAction(action)`                  | Person 4 | Stub                           |
-| `captureScreenshot()`                    | Person 3 | Stub                           |
+| Function                                 | Owner    | Status                                 |
+| ---------------------------------------- | -------- | -------------------------------------- |
+| `transcribeAudio(blob)`                  | Person 2 | ✅ Local Whisper (whisper.cpp)         |
+| `speak(text)`                            | Person 2 | ✅ edge-tts neural voice + OS fallback |
+| `getAssistantResponse(text, screenshot)` | Person 3 | ✅ Claude via OpenRouter               |
+| `captureScreenshot()`                    | Person 3 | ✅ Electron desktopCapturer            |
+| `executeAction(action)`                  | Person 4 | Stub                                   |
+
+## Troubleshooting
+
+- **No sound**: `pip install edge-tts` and restart
+- **Transcription empty**: Check `ffmpeg -version` works
+- **npm install fails**: Install C++ build tools (see above)
+- **Crash on startup**: Add `OPENROUTER_API_KEY` to `.env`

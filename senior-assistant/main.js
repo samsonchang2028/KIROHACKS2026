@@ -10,7 +10,9 @@ const path = require("path");
 const stubs = require("./stubs");
 
 // Named sizes make position math readable and keep the two window configs in sync.
-const FLOATING = { width: 80, height: 80, margin: 20 };
+// FLOATING.width/height is the Electron window — larger than the button (100px) to give
+// breathing room for the drop shadow and the hover scale(1.07) without clipping.
+const FLOATING = { width: 120, height: 120, margin: 20 };
 const CHAT = { width: 480, height: 600 };
 
 // Both windows share identical security settings; one definition prevents drift.
@@ -101,6 +103,7 @@ ipcMain.handle("getResponse", (_e, text) =>
 );
 ipcMain.handle("executeAction", (_e, action) => stubs.executeAction(action));
 ipcMain.handle("speak", (_e, text) => stubs.speak(text));
+ipcMain.handle("stopSpeaking", () => stubs.stopSpeaking());
 ipcMain.handle("captureScreenshot", () => stubs.captureScreenshot());
 
 // logEvent and undoLast have no stub yet; Person 3 will implement the real undo log.
