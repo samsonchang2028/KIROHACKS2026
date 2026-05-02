@@ -34,3 +34,12 @@ desktop.ini
 
 # Electron packager / builder cache
 .cache/
+
+# Python virtual environment (dev tooling)
+.venv/
+
+# Pytest cache
+.pytest_cache/
+
+# Kiro local specs
+.kiro/specs/speech-pipeline/
