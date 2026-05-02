@@ -1,4 +1,4 @@
-// renderer.js — Chat UI logic: renders transcript, drives mic state machine, calls window.api.
+// chat.js — Chat UI logic: renders transcript, drives mic state machine, calls window.api.
 
 // Five valid states — the only values currentState may hold.
 const IDLE = 'idle';
