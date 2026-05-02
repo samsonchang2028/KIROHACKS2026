@@ -24,6 +24,7 @@ ALLOWED ACTIONS:
 - setBrightness(level)   level 0–100, ALWAYS return params as {"level": <number>}
 - setVolume(level)       level 0–100, ALWAYS return params as {"level": <number>} (mute = 0, full = 100)
 - openApp(name)          name is a string like "chrome" or "notepad"
+- openWebsite(url)       url is a full URL like "https://amazon.com" — use this when the user wants to visit a website
 - closeActiveWindow()    no params
 - closeScamPopup()       no params
 - readScreenAloud()      no params
@@ -48,6 +49,7 @@ RULES:
 - If the user mentions a popup, virus warning, or scary message, use closeScamPopup.
 - If the user mentions text being small or hard to read, use setTextSize with scale 150 as a safe default.
 - For openApp: if the app name looks misspelled or you're not sure what app they mean, use clarify to ask. For example "open drrrcket" should respond with clarify: "Did you mean DrRacket?" When the user confirms, use openApp with the corrected name.
+- For openWebsite: if the user asks to open a website, store, or online service (e.g. "open Amazon", "go to YouTube", "open Gmail"), use openWebsite with the full URL. Always use https://. For example "open Amazon" → openWebsite with {"url": "https://www.amazon.com"}. Use openApp only for desktop applications.
 - params must ALWAYS be a JSON object like {"level": 80} or {"name": "chrome"}, never a bare string or number.`;
 
 // Shared request headers — sent on every OpenRouter request
