@@ -76,9 +76,15 @@ function stopRecording() {
 
 // --- DOM refs ---
 
-const statusEl = document.getElementById("status-text");
-const micArea = document.getElementById("mic-area");
+const statusEl   = document.getElementById("status-text");
+const micArea    = document.getElementById("mic-area");
 const messagesEl = document.getElementById("messages");
+const hintEl     = document.getElementById("hint");
+const textInput  = document.getElementById("text-input");
+const sendBtn    = document.getElementById("send-btn");
+const voiceBtn   = document.getElementById("voice-btn");
+const voiceIcon  = document.getElementById("voice-icon");
+const voiceLabel = document.getElementById("voice-label");
 
 // --- Message rendering ---
 
