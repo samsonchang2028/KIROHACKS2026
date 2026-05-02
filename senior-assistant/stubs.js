@@ -11,6 +11,9 @@
 //   speak               → Person 2 (TTS)                 ✅ IMPLEMENTED (OS native TTS)
 //   captureScreenshot   → Person 3 (screenshot capture)
 
+require('dotenv').config();
+const pipeline = require('./llm-integration/pipeline');
+const screenshotModule = require('./llm-integration/screenshot');
 const path = require("path");
 const fs = require("fs");
 const os = require("os");
@@ -190,6 +193,7 @@ function stopSpeaking() {
 // Return shape is the contract: { speak, action, requiresConfirmation }.
 // action is either null (no system change needed) or { name, params } from the locked 8-action catalog.
 async function getAssistantResponse(text, screenshot) {
+  return pipeline.handleQuery(text, screenshot);
   await delay(800);
   return {
     speak: "I can make your text bigger. Should I do that?",
@@ -209,7 +213,7 @@ async function executeAction(action) {
 // Captures a screenshot of the current screen for AI vision context.
 // Returns null until Person 3 wires it up — callers must handle null gracefully.
 async function captureScreenshot() {
-  return null;
+  return screenshotModule.capture().catch(() => null);
 }
 
 module.exports = {

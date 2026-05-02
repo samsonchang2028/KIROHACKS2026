@@ -4,12 +4,14 @@
   "description": "",
   "main": "main.js",
   "scripts": {
-    "start": "electron ."
+    "start": "electron .",
+    "test:pipeline": "node --require ./mock-setup.js llm-integration/pipeline.js"
   },
   "devDependencies": {
     "electron": "^41.5.0"
   },
   "dependencies": {
+    "dotenv": "17.4.2",
     "whisper-node": "^1.1.1"
   }
 }
