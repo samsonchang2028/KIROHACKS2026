@@ -8,5 +8,8 @@
   },
   "devDependencies": {
     "electron": "^41.5.0"
+  },
+  "dependencies": {
+    "whisper-node": "^1.1.1"
   }
 }
