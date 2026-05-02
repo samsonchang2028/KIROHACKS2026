@@ -21,45 +21,17 @@ const { spawn, execSync } = require("child_process");
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-// Paths to the whisper.cpp binary and model.
-// Priority: 1) Pre-built Windows binary in whisper-bin-win/ (no build tools needed)
-//           2) whisper-node compiled binary in node_modules/
-const _isWin = process.platform === "win32";
-
-// Pre-built Windows binary path
-const WHISPER_BIN_PREBUILT = path.join(
-  __dirname,
-  "whisper-bin-win",
-  "main.exe",
-);
-
-// whisper-node compiled binary path
-const WHISPER_BIN_NODE = path.join(
+// Paths to the whisper.cpp binary and model bundled inside whisper-node.
+// On Windows the binary is main.exe; on other platforms it's just main.
+const WHISPER_BIN = path.join(
   __dirname,
   "node_modules/whisper-node/lib/whisper.cpp",
-  _isWin ? "main.exe" : "main",
+  process.platform === "win32" ? "main.exe" : "main",
 );
-
-// Use pre-built if on Windows and it exists, otherwise fall back to whisper-node
-const WHISPER_BIN =
-  _isWin && fs.existsSync(WHISPER_BIN_PREBUILT)
-    ? WHISPER_BIN_PREBUILT
-    : WHISPER_BIN_NODE;
-
-// Model can be in either location
-const WHISPER_MODEL_PATHS = [
-  path.join(
-    __dirname,
-    "node_modules/whisper-node/lib/whisper.cpp/models/ggml-base.bin",
-  ),
-  path.join(
-    __dirname,
-    "node_modules/whisper-node/lib/whisper.cpp/models/ggml-base.en.bin",
-  ),
-  path.join(__dirname, "whisper-bin-win", "models", "ggml-base.bin"),
-];
-const WHISPER_MODEL =
-  WHISPER_MODEL_PATHS.find((p) => fs.existsSync(p)) || WHISPER_MODEL_PATHS[0];
+const WHISPER_MODEL = path.join(
+  __dirname,
+  "node_modules/whisper-node/lib/whisper.cpp/models/ggml-base.en.bin",
+);
 
 // Check if local whisper.cpp is available — if not, we'll use the cloud API.
 const _hasLocalWhisper =
