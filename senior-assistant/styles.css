@@ -1,1 +1,54 @@
 /* styles.css — Shared stylesheet: large-print, high-contrast, senior-accessible visual design. */
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  background: transparent;
+  overflow: hidden;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+/* --- Floating button --- */
+
+#floating-btn {
+  width: 80px;
+  height: 80px;
+  -webkit-app-region: drag; /* whole area is draggable by default */
+}
+
+#floating-inner {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  background: #4A90E2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  cursor: pointer;
+  -webkit-app-region: no-drag; /* inner area accepts clicks, not drags */
+  transition: background 0.15s ease;
+}
+
+#floating-inner:hover {
+  background: #357ABD;
+}
+
+#floating-icon {
+  font-size: 28px;
+  line-height: 1;
+  color: #fff;
+}
+
+#floating-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #fff;
+  letter-spacing: 0.03em;
+}
