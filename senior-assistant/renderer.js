@@ -8,9 +8,9 @@ const CONFIRMING = "confirming";
 const DOING = "doing";
 const VALID_STATES = [IDLE, LISTENING, THINKING, CONFIRMING, DOING];
 
-// Status text shown for each state (confirming hides it since the question is in the buttons).
+// Status text shown only during active states — idle shows nothing (input row is enough).
 const STATUS_TEXT = {
-  [IDLE]: "Tap to talk",
+  [IDLE]: "",
   [LISTENING]: "Listening...",
   [THINKING]: "Thinking...",
   [CONFIRMING]: "",
@@ -19,16 +19,14 @@ const STATUS_TEXT = {
 
 let currentState = IDLE;
 
-// --- Mic recording ---
-// MediaRecorder captures audio while the user holds the mic button.
-// On release, the recorded chunks are assembled into a Blob and sent to transcribeAudio via IPC.
+// --- Mic recording (teammate's implementation — do not modify signatures) ---
+// initMic requests access upfront so first recording starts instantly.
+// startRecording / stopRecording wrap MediaRecorder with clean ArrayBuffer output.
 
 let mediaRecorder = null;
 let audioChunks = [];
 let micStream = null;
 
-// Request mic access once upfront so the first recording starts instantly.
-// Errors are caught — if mic is unavailable, transcribe receives null and returns empty.
 async function initMic() {
   try {
     micStream = await navigator.mediaDevices.getUserMedia({
@@ -47,17 +45,13 @@ async function initMic() {
 
 function startRecording() {
   if (!micStream) return;
-
   audioChunks = [];
-  // Use webm/opus — widely supported in Chromium, ffmpeg converts it to WAV for Whisper.
   mediaRecorder = new MediaRecorder(micStream, {
     mimeType: "audio/webm;codecs=opus",
   });
-
   mediaRecorder.ondataavailable = (e) => {
     if (e.data.size > 0) audioChunks.push(e.data);
   };
-
   mediaRecorder.start();
 }
 
@@ -67,18 +61,15 @@ function stopRecording() {
       resolve(null);
       return;
     }
-
     mediaRecorder.onstop = async () => {
       if (audioChunks.length === 0) {
         resolve(null);
         return;
       }
       const blob = new Blob(audioChunks, { type: "audio/webm" });
-      // Convert Blob to ArrayBuffer for IPC transfer (Electron serializes ArrayBuffers cleanly).
-      const arrayBuffer = await blob.arrayBuffer();
-      resolve(arrayBuffer);
+      // ArrayBuffer transfers cleanly over Electron IPC.
+      resolve(await blob.arrayBuffer());
     };
-
     mediaRecorder.stop();
   });
 }
@@ -88,49 +79,21 @@ function stopRecording() {
 const statusEl = document.getElementById("status-text");
 const micArea = document.getElementById("mic-area");
 const messagesEl = document.getElementById("messages");
-const textInput = document.getElementById("text-input");
-const sendBtn = document.getElementById("send-btn");
 
 // --- Message rendering ---
 
 function renderMessage(role, text) {
+  // Hide the onboarding hint permanently once the first message appears.
+  hintEl.classList.add("hidden");
+
   const div = document.createElement("div");
   div.className = `msg msg-${role}`;
   div.textContent = text;
   messagesEl.appendChild(div);
-  // Keep newest message visible without jarring scroll on older content.
   messagesEl.scrollTop = messagesEl.scrollHeight;
 }
 
-// --- Mic area rendering ---
-
-function renderMicButton() {
-  micArea.innerHTML = "";
-  const btn = document.createElement("button");
-  btn.id = "mic-btn";
-  btn.className = `state-${currentState}`;
-
-  if (currentState === LISTENING) btn.classList.add("pulsing");
-  if (currentState === THINKING) btn.classList.add("spinning");
-
-  const icon = document.createElement("span");
-  icon.className = "mic-icon";
-  icon.textContent = currentState === THINKING ? "⟳" : "🎤";
-
-  const label = document.createElement("span");
-  label.className = "mic-label";
-  label.textContent = STATUS_TEXT[currentState];
-
-  btn.appendChild(icon);
-  btn.appendChild(label);
-  micArea.appendChild(btn);
-
-  // Press-and-hold: mousedown starts listening, mouseup ends it.
-  btn.addEventListener("mousedown", handleMicDown);
-  btn.addEventListener("mouseup", handleMicUp);
-  btn.addEventListener("touchstart", handleMicDown);
-  btn.addEventListener("touchend", handleMicUp);
-}
+// --- Confirmation buttons (injected into mic-area during confirming state) ---
 
 function renderConfirmButtons(question, action) {
   micArea.innerHTML = "";
@@ -149,12 +112,35 @@ function renderConfirmButtons(question, action) {
   micArea.appendChild(no);
 }
 
-// --- Core state function — the only way state ever changes ---
+function clearConfirmButtons() {
+  micArea.innerHTML = "";
+}
+
+// --- Voice button visual state ---
+
+function setVoiceButtonState(state) {
+  voiceBtn.className = `voice-btn-${state}`;
+
+  if (state === LISTENING) {
+    voiceIcon.textContent = "⏹";
+    voiceLabel.textContent = "Stop";
+    // Glow ring signals mic is live — slow and calm, not alarming.
+    voiceBtn.classList.add("pulsing");
+  } else if (state === THINKING) {
+    voiceIcon.textContent = "⟳";
+    voiceLabel.textContent = "Thinking...";
+    voiceBtn.classList.add("spinning-icon");
+  } else {
+    voiceIcon.textContent = "🎤";
+    voiceLabel.textContent = "Speak";
+  }
+}
+
+// --- Core state function — the only place state ever changes ---
 
 function setMicState(state, context) {
-  if (!VALID_STATES.includes(state)) {
+  if (!VALID_STATES.includes(state))
     throw new Error(`Invalid mic state: ${state}`);
-  }
 
   currentState = state;
   statusEl.textContent = STATUS_TEXT[state];
@@ -162,10 +148,18 @@ function setMicState(state, context) {
   if (state === CONFIRMING) {
     renderConfirmButtons(context.question, context.action);
   } else {
-    renderMicButton();
+    clearConfirmButtons();
   }
 
-  // Announce state transitions so vision-impaired users know what's happening.
+  setVoiceButtonState(state);
+
+  // Disable text input while assistant is busy; re-enable at idle or confirming.
+  const busy = state !== IDLE && state !== CONFIRMING;
+  textInput.disabled = busy;
+  sendBtn.disabled = busy;
+  voiceBtn.disabled = state === THINKING || state === DOING;
+
+  // Announce transitions for vision-impaired users.
   if (state === LISTENING) window.api.speak("Listening");
   else if (state === THINKING) window.api.speak("Thinking");
   else if (state === DOING) window.api.speak("Doing it now");
@@ -174,60 +168,33 @@ function setMicState(state, context) {
   else if (state === IDLE && context === "completed") window.api.speak("Done");
 }
 
-// --- State machine transitions ---
+// --- Shared response handler (text and voice both funnel here) ---
 
-function handleMicDown(e) {
-  e.preventDefault();
-  if (currentState !== IDLE) return;
-  startRecording();
-  setMicState(LISTENING);
-}
+async function handleUserInput(userText) {
+  if (!userText || !userText.trim()) return;
 
-async function handleMicUp(e) {
-  e.preventDefault();
-  if (currentState !== LISTENING) return;
+  renderMessage("user", userText);
   setMicState(THINKING);
 
   try {
-    // Stop recording and get the audio as an ArrayBuffer.
-    const audioBuffer = await stopRecording();
-
-    if (!audioBuffer || audioBuffer.byteLength === 0) {
-      renderMessage(
-        "assistant",
-        "I didn't hear anything. Could you try again?",
-      );
-      window.api.speak("I didn't hear anything. Could you try again?");
-      setMicState(IDLE);
-      return;
-    }
-
-    // Send real audio to transcribeAudio via IPC.
-    const userText = await window.api.transcribe(audioBuffer);
-
-    if (!userText || userText.trim() === "") {
-      renderMessage(
-        "assistant",
-        "I didn't catch that. Could you say it again?",
-      );
-      window.api.speak("I didn't catch that. Could you say it again?");
-      setMicState(IDLE);
-      return;
-    }
-
-    renderMessage("user", userText);
-
     const response = await window.api.getResponse(userText);
     renderMessage("assistant", response.speak);
 
     if (response.requiresConfirmation && response.action) {
+      // Confirmation flow — speak is handled by setMicState(CONFIRMING).
       setMicState(CONFIRMING, {
         question: response.speak,
         action: response.action,
       });
-    } else {
+    } else if (response.action) {
+      // Action that doesn't need confirmation — speak response, then execute.
+      window.api.speak(response.speak);
       setMicState(DOING);
       await executeAndFinish(response.action);
+    } else {
+      // No action (clarification, refusal, etc.) — just speak the response and go idle.
+      window.api.speak(response.speak);
+      setMicState(IDLE);
     }
   } catch (err) {
     renderMessage(
@@ -238,6 +205,85 @@ async function handleMicUp(e) {
     setMicState(IDLE);
   }
 }
+
+// --- Text input: Enter submits, Shift+Enter inserts newline ---
+
+textInput.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && !e.shiftKey) {
+    e.preventDefault();
+    submitTextInput();
+  }
+});
+
+sendBtn.addEventListener("click", submitTextInput);
+
+function submitTextInput() {
+  const text = textInput.value.trim();
+  if (!text || currentState !== IDLE) return;
+  // Stop any in-progress speech when user submits text.
+  window.api.stopSpeaking();
+  textInput.value = "";
+  handleUserInput(text);
+}
+
+// --- Voice button: click once to start, click again to stop ---
+
+voiceBtn.addEventListener("click", async () => {
+  if (currentState === IDLE) await startListening();
+  else if (currentState === LISTENING) await stopListening();
+  // Other states: button is disabled, clicks are ignored.
+});
+
+async function startListening() {
+  if (!micStream) {
+    renderMessage(
+      "assistant",
+      "I couldn't access your microphone. You can still type your question below.",
+    );
+    window.api.speak("I couldn't access your microphone.");
+    return;
+  }
+  // Stop any in-progress speech when user starts talking.
+  window.api.stopSpeaking();
+  startRecording();
+  setMicState(LISTENING);
+}
+
+async function stopListening() {
+  setMicState(THINKING);
+
+  const audioBuffer = await stopRecording();
+
+  if (!audioBuffer || audioBuffer.byteLength === 0) {
+    renderMessage("assistant", "I didn't hear anything. Could you try again?");
+    window.api.speak("I didn't hear anything. Could you try again?");
+    setMicState(IDLE);
+    return;
+  }
+
+  try {
+    const userText = await window.api.transcribe(audioBuffer);
+    if (!userText || !userText.trim()) {
+      renderMessage(
+        "assistant",
+        "I didn't catch that. Could you say it again?",
+      );
+      window.api.speak("I didn't catch that. Could you say it again?");
+      setMicState(IDLE);
+      return;
+    }
+    await handleUserInput(userText);
+  } catch (err) {
+    renderMessage(
+      "assistant",
+      "Sorry, something went wrong. Want me to try again?",
+    );
+    window.api.speak("Sorry, something went wrong.");
+    setMicState(IDLE);
+  }
+}
+
+// --- Confirm / cancel ---
 
 async function handleConfirm(confirmed, action) {
   if (confirmed) {
@@ -267,46 +313,5 @@ async function executeAndFinish(action) {
 
 // --- Init ---
 
-// Request mic access immediately so the first recording starts without delay.
-initMic();
+initMic(); // Request mic access upfront — first recording starts instantly.
 setMicState(IDLE);
-
-// --- Text input ---
-
-async function handleTextSend() {
-  const text = textInput.value.trim();
-  if (!text || currentState !== IDLE) return;
-
-  textInput.value = '';
-  sendBtn.disabled = true;
-  setMicState(THINKING);
-  renderMessage("user", text);
-
-  try {
-    const response = await window.api.getResponse(text);
-    console.log('[DEBUG] response:', JSON.stringify(response));
-    renderMessage("assistant", response.speak);
-    window.api.speak(response.speak);
-
-    if (response.requiresConfirmation && response.action) {
-      setMicState(CONFIRMING, {
-        question: response.speak,
-        action: response.action,
-      });
-    } else {
-      setMicState(DOING);
-      await executeAndFinish(response.action);
-    }
-  } catch (err) {
-    renderMessage("assistant", "Sorry, something went wrong. Want me to try again?");
-    window.api.speak("Sorry, something went wrong.");
-    setMicState(IDLE);
-  } finally {
-    sendBtn.disabled = false;
-  }
-}
-
-sendBtn.addEventListener("click", handleTextSend);
-textInput.addEventListener("keydown", (e) => {
-  if (e.key === "Enter") handleTextSend();
-});

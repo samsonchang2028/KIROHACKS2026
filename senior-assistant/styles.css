@@ -1,14 +1,14 @@
 /* styles.css — Large-print, high-contrast, senior-accessible visual design. */
 
 :root {
-  --idle: #4A90E2;
+  --idle:      #4A90E2;
   --listening: #E74C3C;
-  --thinking: #F39C12;
-  --doing: #27AE60;
-  --yes: #27AE60;
-  --no: #E74C3C;
-  --text: #1a1a1a;
-  --bg: #ffffff;
+  --thinking:  #F39C12;
+  --doing:     #27AE60;
+  --yes:       #3aaa6a;  /* slightly desaturated — choice, not alarm */
+  --no:        #d94f4f;
+  --text:      #1a1a1a;
+  --bg:        #ffffff;
 }
 
 * {
@@ -28,30 +28,60 @@ body {
   overflow: hidden;
 }
 
-/* --- Header --- */
+/* --- Header (inside #messages, scrolls away naturally) --- */
 
 #header {
-  font-size: 28pt;
-  font-weight: 600;
-  padding: 16px 24px;
-  border-bottom: 1px solid #e0e0e0;
-  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 16px 16px 10px;
+  text-align: center;
 }
 
-/* --- Messages area --- */
+#header-icon {
+  font-size: 20pt;
+  color: #5a9fd4;
+  line-height: 1;
+}
+
+#header-title {
+  font-size: 22pt;
+  font-weight: 700;
+  color: #2c3e50;
+  letter-spacing: 0.01em;
+  border-bottom: 2px solid #d0e8f8;
+  padding-bottom: 2px;
+}
+
+/* --- Onboarding hint (hidden once first message is sent) --- */
+
+#hint {
+  font-size: 17pt;
+  color: #666;
+  padding: 4px 16px 16px;
+  line-height: 1.4;
+  text-align: center;
+}
+
+#hint.hidden {
+  display: none;
+}
+
+/* --- Messages area (takes all remaining vertical space, only this scrolls) --- */
 
 #messages {
   flex: 1;
   overflow-y: auto;
-  padding: 20px 16px;
+  padding: 0 12px 8px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
 }
 
 .msg {
   max-width: 80%;
-  padding: 14px 18px;
+  padding: 12px 16px;
   border-radius: 16px;
   font-size: 20pt;
   line-height: 1.4;
@@ -70,32 +100,117 @@ body {
   color: var(--text);
 }
 
-/* --- Status text --- */
+/* --- Status text (empty at idle → collapses to zero height) --- */
 
 #status-text {
-  font-size: 28pt;
-  font-weight: 700;
+  font-size: 17pt;
+  font-weight: 600;
   text-align: center;
-  padding: 16px 0;
+  padding: 4px 16px;
+  color: #555;
   flex-shrink: 0;
 }
 
-/* --- Mic area --- */
+#status-text:empty {
+  display: none;
+}
+
+/* --- Animations --- */
+
+@keyframes glow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(231, 76, 60, 0.45); }
+  50%      { box-shadow: 0 0 0 10px rgba(231, 76, 60, 0); }
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+/* --- Confirmation buttons — compact inline choices --- */
 
 #mic-area {
   display: flex;
   justify-content: center;
   align-items: center;
-  padding: 12px 16px 24px;
+  padding: 6px 16px 8px;
   flex-shrink: 0;
-  gap: 16px;
+  gap: 12px;
 }
 
-/* --- Mic button --- */
+.confirm-btn {
+  flex: 1;
+  max-width: 160px;
+  height: 72px;
+  border: none;
+  border-radius: 12px;
+  font-size: 20pt;
+  font-weight: 600;
+  color: #fff;
+  cursor: pointer;
+  font-family: inherit;
+  transition: opacity 0.15s ease;
+}
 
-#mic-btn {
-  width: 120px;
-  height: 120px;
+.confirm-btn:hover { opacity: 0.88; }
+.confirm-yes { background: var(--yes); }
+.confirm-no  { background: var(--no); }
+
+/* --- Bottom input bar: unified row — textarea + Send + Speak --- */
+
+#input-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px 12px;
+  border-top: 1px solid #ddd;
+  background: #f7f7f7;
+  flex-shrink: 0;
+}
+
+/* Textarea — grows to fill available width */
+#text-input {
+  flex: 1;
+  font-family: inherit;
+  font-size: 17pt;
+  color: var(--text);
+  background: #fff;
+  border: 1.5px solid #ccc;
+  border-radius: 10px;
+  padding: 10px 12px;
+  resize: none;
+  line-height: 1.4;
+  height: 56px;
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+
+#text-input:focus   { border-color: var(--idle); }
+#text-input:disabled { background: #f0f0f0; color: #999; }
+
+/* Send button — secondary, visually attached to the input */
+#send-btn {
+  height: 56px;
+  padding: 0 16px;
+  font-family: inherit;
+  font-size: 15pt;
+  font-weight: 600;
+  color: #fff;
+  background: var(--idle);
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.15s ease;
+}
+
+#send-btn:hover:not(:disabled) { background: #357ABD; }
+#send-btn:disabled { background: #b0c8e8; cursor: default; }
+
+/* Voice button — circular, slightly taller than the input row */
+#voice-btn {
+  width: 64px;
+  height: 64px;
   border-radius: 50%;
   border: none;
   cursor: pointer;
@@ -103,57 +218,34 @@ body {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 4px;
+  gap: 2px;
   color: #fff;
   font-family: inherit;
+  background: var(--idle);
+  flex-shrink: 0;
   transition: background 0.2s ease;
 }
 
-#mic-btn .mic-icon { font-size: 36px; line-height: 1; }
-#mic-btn .mic-label { font-size: 14pt; font-weight: 600; }
+#voice-btn:disabled { background: #b0c8e8; cursor: default; }
 
-/* State colors applied via class */
-#mic-btn.state-idle      { background: var(--idle); }
-#mic-btn.state-listening  { background: var(--listening); }
-#mic-btn.state-thinking   { background: var(--thinking); }
-#mic-btn.state-doing      { background: var(--doing); }
+/* State colors */
+#voice-btn.voice-btn-listening { background: var(--listening); }
+#voice-btn.voice-btn-thinking  { background: var(--thinking); }
+#voice-btn.voice-btn-doing     { background: var(--doing); }
 
-/* --- Pulsing animation for listening state --- */
+#voice-icon  { font-size: 22px; line-height: 1; }
+#voice-label { font-size: 10pt; font-weight: 600; }
 
-@keyframes pulse {
-  0%, 100% { transform: scale(1); opacity: 1; }
-  50%      { transform: scale(1.08); opacity: 0.85; }
+/* Slow glow ring while mic is live — calm, clearly "on" */
+#voice-btn.pulsing { animation: glow 1.4s ease-in-out infinite; }
+
+/* Spin the icon while thinking */
+#voice-btn.spinning-icon #voice-icon {
+  display: inline-block;
+  animation: spin 1s linear infinite;
 }
 
-#mic-btn.pulsing { animation: pulse 1s ease-in-out infinite; }
-
-/* --- Spinning animation for thinking state (inner element only) --- */
-
-@keyframes spin {
-  from { transform: rotate(0deg); }
-  to   { transform: rotate(360deg); }
-}
-
-#mic-btn.spinning .mic-icon { animation: spin 1s linear infinite; }
-
-/* --- Confirmation buttons --- */
-
-.confirm-btn {
-  flex: 1;
-  height: 120px;
-  border: none;
-  border-radius: 16px;
-  font-size: 28pt;
-  font-weight: 700;
-  color: #fff;
-  cursor: pointer;
-  font-family: inherit;
-}
-
-.confirm-yes { background: var(--yes); }
-.confirm-no  { background: var(--no); }
-
-/* --- Floating button (shared file, keep existing styles) --- */
+/* --- Floating Help button (floating.html shares this file) --- */
 
 #floating-btn {
   width: 80px;
