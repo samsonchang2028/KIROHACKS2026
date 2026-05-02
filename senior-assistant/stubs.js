@@ -534,11 +534,21 @@ async function executeAction(action) {
         break;
       }
       case "closeActiveWindow": {
-        execSync(`"${NIRCMD}" win close foreground`);
+        // Use Alt+F4 via NirCmd to close the foreground window
+        // First send our window to back so the target window is in front
+        execSync(`"${NIRCMD}" win hide title "senior-assistant""`);
+        await new Promise(r => setTimeout(r, 500));
+        execSync(`"${NIRCMD}" sendkeypress 0x73+alt`); // Alt+F4
+        await new Promise(r => setTimeout(r, 300));
+        execSync(`"${NIRCMD}" win show title "senior-assistant""`);
         break;
       }
       case "closeScamPopup": {
-        execSync(`"${NIRCMD}" win close foreground`);
+        execSync(`"${NIRCMD}" win hide title "senior-assistant""`);
+        await new Promise(r => setTimeout(r, 500));
+        execSync(`"${NIRCMD}" sendkeypress 0x73+alt`); // Alt+F4
+        await new Promise(r => setTimeout(r, 300));
+        execSync(`"${NIRCMD}" win show title "senior-assistant""`);
         break;
       }
       case "readScreenAloud":
