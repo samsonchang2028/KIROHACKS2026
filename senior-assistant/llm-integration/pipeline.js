@@ -185,6 +185,7 @@ async function handleQuery(userMessage) {
         let parsed = await llm.textQuery(userMessage, conversationHistory.slice(0, -1));
 
         // Step 2: If the LLM needs a screenshot, capture and re-query with vision
+        let cameFromVision = false;
         if (parsed.action === 'needs_screenshot') {
             let base64 = null;
             try {
@@ -198,6 +199,7 @@ async function handleQuery(userMessage) {
                 try {
                     parsed = await llm.visionQuery(userMessage + ' [A screenshot of my screen is attached. Analyze it and respond directly. Do NOT return needs_screenshot.]', base64, conversationHistory.slice(0, -1));
                     console.log('[pipeline] vision result:', JSON.stringify(parsed));
+                    cameFromVision = true;
                     // Prevent infinite loop — if vision still returns needs_screenshot, convert to clarify
                     if (parsed.action === 'needs_screenshot') {
                         parsed = { action: 'clarify', params: null, reply: "I can see your screen. Can you tell me what part looks suspicious?" };
@@ -222,7 +224,7 @@ async function handleQuery(userMessage) {
         const action = validatedAction;
 
         // Handle explain_last_action — LLM detected user confusion about a recent action
-        if (action === 'explain_last_action') {
+        if (action === 'explain_last_action' && !cameFromVision) {
             const explanation = await explainLastAction().catch(() =>
                 "I'm not sure what happened — something may have gone wrong."
             );
