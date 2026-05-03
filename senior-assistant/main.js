@@ -9,6 +9,7 @@ const {
 const path = require("path");
 const stubs = require("./stubs");
 const { getHeavyProcesses, killProcesses, checkSystem } = require("./system-monitor");
+const { runWalkthrough, cancelActiveWalkthrough } = require("./walkthroughs");
 
 // Named sizes make position math readable and keep the two window configs in sync.
 // FLOATING.width/height is the Electron window — larger than the button (100px) to give
@@ -150,27 +151,23 @@ ipcMain.handle("closeChatWindow", () => hideChatWindow());
 // Opens chat window and sends a start-voice signal so renderer auto-starts listening.
 ipcMain.handle("openChatWindowVoice", () => {
   showChatWindow();
-  // Wait for the window to be visible before sending the signal.
-  // ready-to-show fires on first load; subsequent shows are instant so we use a short delay.
   const sendVoice = () => {
     if (chatWindow && !chatWindow.isDestroyed()) {
       chatWindow.webContents.send("start-voice");
     }
   };
   if (chatWindow && chatWindow.isVisible()) {
-    setTimeout(sendVoice, 80); // already loaded — small delay for render cycle
+    setTimeout(sendVoice, 80);
   } else {
     chatWindow.once("ready-to-show", () => setTimeout(sendVoice, 80));
   }
 });
 
 // Temporarily makes the floating window focusable so getUserMedia works for mic recording.
-// Restored to non-focusable after a short delay so it doesn't steal focus from other apps.
 ipcMain.handle("requestMicFocus", () => {
   if (!floatingWindow) return;
   floatingWindow.setFocusable(true);
   floatingWindow.focus();
-  // Restore after recording window — 10s is generous for any hold duration
   setTimeout(() => {
     if (floatingWindow && !floatingWindow.isDestroyed()) {
       floatingWindow.setFocusable(false);
@@ -202,7 +199,7 @@ ipcMain.handle("win-maximize", () => {
 });
 ipcMain.handle("win-close", () => { if (chatWindow) chatWindow.hide(); });
 
-// --- IPC: stub pass-throughs (teammates replace stub bodies, not these handlers) ---
+// --- IPC: stub pass-throughs ---
 
 ipcMain.handle("transcribe", (_e, blob) => stubs.transcribeAudio(blob));
 ipcMain.handle("getResponse", (_e, text) =>
@@ -226,7 +223,6 @@ ipcMain.handle("reboot", () => {
   }
 });
 
-// logEvent and undoLast have no stub yet; Person 3 will implement the real undo log.
 ipcMain.handle("logEvent", (_e, event) => {
   console.log("[EVENT]", event);
   return { ok: true };
@@ -236,10 +232,41 @@ ipcMain.handle("undoLast", () => {
   return { ok: true };
 });
 
+// --- Walkthrough lifecycle events (sent to chat renderer only, no overlay) ---
+
+function emitWalkthroughEvent(data) {
+  if (chatWindow && !chatWindow.isDestroyed()) {
+    chatWindow.webContents.send("walkthrough-event", data);
+  }
+}
+
+// --- IPC: walkthrough lifecycle ---
+
+ipcMain.handle("startWalkthrough", async (_e, name) => {
+  runWalkthrough(name, {
+    emit: emitWalkthroughEvent,
+    speak: stubs.speak,
+    executeAction: stubs.executeAction,
+    showChat: showChatWindow,
+    hideChat: hideChatWindow,
+    destroyOverlay: () => {},
+  });
+});
+
+ipcMain.handle("cancelWalkthrough", () => {
+  cancelActiveWalkthrough();
+  emitWalkthroughEvent({ type: "walkthrough-cancelled" });
+  showChatWindow();
+});
+
+ipcMain.handle("submitWalkthroughInput", (_e, text) => {
+  const { resolveInput } = require("./walkthroughs");
+  resolveInput(text);
+});
+
 // --- App lifecycle ---
 
-app.whenReady().then(() => {
-  // Grant microphone permission automatically — Electron blocks it by default.
+app.on("ready", async () => {
   session.defaultSession.setPermissionRequestHandler(
     (webContents, permission, callback) => {
       if (permission === "media") {
@@ -252,11 +279,8 @@ app.whenReady().then(() => {
 
   createFloatingWindow();
 
-  // Ctrl+Space may conflict with some CJK input method editors (IMEs).
-  // If the demo machine uses a CJK IME, disable this shortcut before presenting.
   globalShortcut.register("CommandOrControl+Space", () => showChatWindow());
 
-  // Ctrl+Shift+S — trigger memory check (toast + chat in background)
   globalShortcut.register("CommandOrControl+Shift+S", () => {
     const suggestions = checkSystem();
     if (suggestions.length > 0) {
@@ -268,7 +292,6 @@ app.whenReady().then(() => {
     }
   });
 
-  // Ctrl+Shift+R — trigger reboot suggestion (chat only)
   globalShortcut.register("CommandOrControl+Shift+R", () => {
     const { checkUptime } = require("./system-monitor");
     const up = checkUptime();
@@ -285,9 +308,7 @@ app.whenReady().then(() => {
   });
 });
 
-app.on("window-all-closed", () => {
-  // Intentionally empty: quit lifecycle is managed via floatingWindow 'closed' above.
-});
+app.on("window-all-closed", () => {});
 
 app.on("will-quit", () => {
   globalShortcut.unregisterAll();
