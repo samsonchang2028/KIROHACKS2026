@@ -67,7 +67,7 @@ function createChatWindow() {
     show: false,
     frame: false,
     transparent: true,
-    resizable: false,
+    resizable: true,
     webPreferences,
   });
 

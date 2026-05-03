@@ -484,6 +484,11 @@ async function executeAndFinish(action) {
   }
 }
 
+// --- Title bar controls ---
+document.getElementById("tb-minimize").addEventListener("click", () => window.api.winMinimize());
+document.getElementById("tb-maximize").addEventListener("click", () => window.api.winMaximize());
+document.getElementById("tb-close").addEventListener("click", () => window.api.winClose());
+
 // --- Init ---
 
 initMic();
