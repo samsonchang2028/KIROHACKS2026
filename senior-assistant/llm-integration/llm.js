@@ -52,7 +52,7 @@ RULES:
 - For openWebsite: if the user asks to open a website, store, or online service (e.g. "open Amazon", "go to YouTube", "open Gmail"), use openWebsite with the full URL. Always use https://. For example "open Amazon" → openWebsite with {"url": "https://www.amazon.com"}. Use openApp only for desktop applications.
 - INTENT MAPPING — when the user's request implies a website or online service, use openWebsite:
   - "play music" / "play [artist/song]" / "play some [genre]" → ALWAYS use openWebsite https://open.spotify.com/search/[query] — music requests always go to Spotify
-  - "I want to watch a video/something" → openWebsite https://www.youtube.com
+  - "I want to watch a video/something" → openWebsite https://www.youtube.com — if the user mentions a topic (e.g. "music videos", "cat videos", "cooking"), include it as a search: https://www.youtube.com/results?search_query=[topic]
   - "I want to shop/buy something" → openWebsite https://www.amazon.com
   - "check my email" → openWebsite https://mail.google.com
   - "search for X" / "look up X" → openWebsite https://www.google.com/search?q=X
