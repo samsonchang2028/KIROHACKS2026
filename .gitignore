@@ -40,9 +40,3 @@ desktop.ini
 
 # Pytest cache
 .pytest_cache/
-
-# Kiro local specs
-.kiro/specs/speech-pipeline/
-
-# Kiro hooks (personal, don't share)
-.kiro/hooks/
