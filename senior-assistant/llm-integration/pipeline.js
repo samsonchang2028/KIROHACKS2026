@@ -26,6 +26,7 @@ const ALLOWED_ACTIONS = [
     'no_match',
     'clarify',
     'explain_last_action',
+    'checkPerformance',
 ];
 
 // Actions that require user confirmation before execution.
@@ -41,7 +42,7 @@ const REQUIRES_CONFIRMATION = new Set([
 ]);
 
 // Non-executable control actions — these return action: null in the stub contract
-const NON_EXECUTABLE = new Set(['needs_screenshot', 'no_match', 'clarify', 'explain_last_action']);
+const NON_EXECUTABLE = new Set(['needs_screenshot', 'no_match', 'clarify', 'explain_last_action', 'checkPerformance']);
 
 /**
  * Validates an action string against the allowlist.
