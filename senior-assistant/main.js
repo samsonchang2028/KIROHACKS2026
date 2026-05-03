@@ -25,6 +25,7 @@ const webPreferences = {
 
 let floatingWindow = null;
 let chatWindow = null;
+let toastWindow = null;
 
 // --- Window factories ---
 
@@ -73,8 +74,8 @@ function createChatWindow() {
 
   chatWindow.loadFile("renderer.html");
 
-  // Show only when content is ready — this is what keeps click→visible under 200ms.
-  chatWindow.once("ready-to-show", () => chatWindow.show());
+  // Show only when explicitly requested via showChatWindow()
+  chatWindow.once("ready-to-show", () => {});
 
   // Hide instead of destroy so the next open is instant (no re-parse of renderer.html).
   chatWindow.on("close", (event) => {
@@ -86,12 +87,59 @@ function createChatWindow() {
 // --- Show/hide helpers (shared by IPC handler and global shortcut) ---
 
 function showChatWindow() {
-  if (!chatWindow) { createChatWindow(); }
+  if (!chatWindow) { createChatWindow(); chatWindow.show(); }
   else { chatWindow.show(); }
 }
 
 function hideChatWindow() {
   if (chatWindow) { chatWindow.hide(); }
+}
+
+function showToast(message, suggestions) {
+  if (toastWindow) { toastWindow.close(); toastWindow = null; }
+
+  const { width, height } = screen.getPrimaryDisplay().workAreaSize;
+  const toastW = 300, toastH = 60;
+
+  toastWindow = new BrowserWindow({
+    width: toastW,
+    height: toastH,
+    x: width - toastW - FLOATING.margin,
+    y: height - FLOATING.height - FLOATING.margin - toastH - 10,
+    frame: false,
+    transparent: true,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    resizable: false,
+    focusable: false,
+    webPreferences: {
+      preload: path.join(__dirname, "preload.js"),
+      contextIsolation: false,
+      nodeIntegration: true,
+    },
+  });
+
+  toastWindow.setAlwaysOnTop(true, "screen-saver");
+  toastWindow.loadFile("toast.html");
+
+  toastWindow.webContents.once("did-finish-load", () => {
+    toastWindow.webContents.send("show-toast", message);
+  });
+
+  // Click Fix kills heavy processes directly
+  ipcMain.handleOnce("toast-clicked", async () => {
+    const procs = getHeavyProcesses();
+    const allPids = procs.flatMap(p => p.pids || [p.pid]);
+    const killed = killProcesses(allPids);
+    if (toastWindow) { toastWindow.close(); toastWindow = null; }
+    // Show a brief "done" toast
+    showToast(`Closed ${killed} app${killed !== 1 ? 's' : ''} to free up memory`, []);
+  });
+
+  // Auto-dismiss after 8 seconds
+  setTimeout(() => {
+    if (toastWindow) { toastWindow.close(); toastWindow = null; }
+  }, 8000);
 }
 
 // --- IPC: window management ---
@@ -162,22 +210,27 @@ app.whenReady().then(() => {
   // If the demo machine uses a CJK IME, disable this shortcut before presenting.
   globalShortcut.register("CommandOrControl+Space", () => showChatWindow());
 
-  // Ctrl+Shift+S — trigger proactive system check (for demo)
+  // Ctrl+Shift+S — trigger memory check (toast + chat in background)
   globalShortcut.register("CommandOrControl+Shift+S", () => {
-    showChatWindow();
     const suggestions = checkSystem();
-    if (chatWindow && suggestions.length > 0) {
-      chatWindow.webContents.send("system-check", suggestions);
+    if (suggestions.length > 0) {
+      showToast("Apps are slowing down your computer", suggestions);
+      if (!chatWindow) createChatWindow();
+      setTimeout(() => {
+        if (chatWindow) chatWindow.webContents.send("system-check", suggestions);
+      }, 300);
     }
   });
 
-  // Ctrl+Shift+R — trigger reboot suggestion only (for demo)
+  // Ctrl+Shift+R — trigger reboot suggestion (chat only)
   globalShortcut.register("CommandOrControl+Shift+R", () => {
-    showChatWindow();
     const { checkUptime } = require("./system-monitor");
     const up = checkUptime();
-    if (chatWindow && up) {
-      chatWindow.webContents.send("system-check", [up]);
+    if (up) {
+      showChatWindow();
+      setTimeout(() => {
+        if (chatWindow) chatWindow.webContents.send("system-check", [up]);
+      }, 300);
     }
   });
 
