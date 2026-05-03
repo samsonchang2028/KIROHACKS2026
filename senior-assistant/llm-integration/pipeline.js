@@ -185,21 +185,37 @@ async function handleQuery(userMessage) {
         let parsed = await llm.textQuery(userMessage, conversationHistory.slice(0, -1));
 
         // Step 2: If the LLM needs a screenshot, capture and re-query with vision
+        let cameFromVision = false;
         if (parsed.action === 'needs_screenshot') {
             let base64 = null;
             try {
                 base64 = await screenshot.capture();
+                console.log('[pipeline] screenshot captured, length:', base64?.length);
             } catch (screenshotErr) {
-                // Screenshot failure is non-fatal — proceed without it
-                console.error('[LLM ERROR] screenshot capture failed, proceeding without screenshot:', screenshotErr.message);
+                console.error('[LLM ERROR] screenshot capture failed:', screenshotErr.message);
             }
 
-            // Call vision query (with or without screenshot — if null, pass empty string)
-            parsed = await llm.visionQuery(userMessage, base64 || '', conversationHistory.slice(0, -1));
+            if (base64) {
+                try {
+                    parsed = await llm.visionQuery(userMessage + ' [A screenshot of my screen is attached. Analyze it and respond directly. Do NOT return needs_screenshot.]', base64, conversationHistory.slice(0, -1));
+                    console.log('[pipeline] vision result:', JSON.stringify(parsed));
+                    cameFromVision = true;
+                    // Prevent infinite loop — if vision still returns needs_screenshot, convert to clarify
+                    if (parsed.action === 'needs_screenshot') {
+                        parsed = { action: 'clarify', params: null, reply: "I can see your screen. Can you tell me what part looks suspicious?" };
+                    }
+                } catch (visionErr) {
+                    console.error('[LLM ERROR] vision query failed:', visionErr.message);
+                    parsed = { action: 'clarify', params: null, reply: "I saw your screen but had trouble analyzing it. Can you describe what looks suspicious?" };
+                }
+            } else {
+                parsed = { action: 'clarify', params: null, reply: "I couldn't see your screen. Can you describe what you're looking at?" };
+            }
         }
 
         // Step 3: Validate action against allowlist — never trust LLM output
         const rawAction = parsed.action;
+        console.log('[pipeline] final parsed action:', rawAction, 'reply:', parsed.reply?.substring(0, 80), 'cameFromVision:', cameFromVision);
         const validatedAction = validateAction(rawAction);
 
         if (validatedAction !== rawAction) {
@@ -209,7 +225,7 @@ async function handleQuery(userMessage) {
         const action = validatedAction;
 
         // Handle explain_last_action — LLM detected user confusion about a recent action
-        if (action === 'explain_last_action') {
+        if (action === 'explain_last_action' && !cameFromVision) {
             const explanation = await explainLastAction().catch(() =>
                 "I'm not sure what happened — something may have gone wrong."
             );
