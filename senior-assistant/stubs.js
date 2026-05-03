@@ -518,7 +518,7 @@ function findInstalledApp(query) {
   return null;
 }
 
-async function executeAction(action) {
+async function _executeActionImpl(action) {
   if (!action || !action.name) return { success: false };
 
   console.log("[ACTION]", action);
@@ -704,6 +704,54 @@ async function executeAction(action) {
         }
         break;
       }
+      case "closeApp": {
+        const rawName =
+          typeof action.params === "string"
+            ? action.params
+            : (action.params?.name ?? "");
+        const name = rawName.toLowerCase().trim();
+        if (!name) return { success: false, error: "No app name provided" };
+
+        const processMap = {
+          chrome: "chrome.exe",
+          "google chrome": "chrome.exe",
+          firefox: "firefox.exe",
+          edge: "msedge.exe",
+          "microsoft edge": "msedge.exe",
+          notepad: "notepad.exe",
+          calculator: "calculator.exe",
+          calc: "calculator.exe",
+          paint: "mspaint.exe",
+          word: "winword.exe",
+          excel: "excel.exe",
+          powerpoint: "powerpnt.exe",
+          outlook: "outlook.exe",
+          explorer: "explorer.exe",
+          spotify: "spotify.exe",
+          teams: "teams.exe",
+          zoom: "zoom.exe",
+          slack: "slack.exe",
+          discord: "discord.exe",
+          vlc: "vlc.exe",
+        };
+
+        if (platform === "darwin") {
+          const macAppMap = {
+            chrome: "Google Chrome", "google chrome": "Google Chrome",
+            firefox: "Firefox", safari: "Safari", edge: "Microsoft Edge",
+            notepad: "TextEdit", textedit: "TextEdit", calculator: "Calculator",
+            spotify: "Spotify", teams: "Microsoft Teams", zoom: "zoom.us",
+            slack: "Slack", discord: "Discord",
+          };
+          const appName = macAppMap[name] || rawName;
+          execSync(`osascript -e 'quit app "${appName}"'`, { stdio: "ignore", timeout: 5000 });
+        } else {
+          const exe = processMap[name] || (rawName.endsWith(".exe") ? rawName : rawName + ".exe");
+          console.log(`[ACTION] closeApp: "${name}" -> taskkill ${exe}`);
+          execSync(`taskkill /IM "${exe}" /F`, { stdio: "ignore", timeout: 5000 });
+        }
+        break;
+      }
       case "closeActiveWindow": {
         if (platform === "darwin") {
           // Close the frontmost window of the active app (no accessibility permission needed).
@@ -747,6 +795,34 @@ async function executeAction(action) {
     console.error("[ACTION] executeAction failed:", err.message);
     return { success: false, error: err.message };
   }
+
+}
+
+// Wrap _executeActionImpl to capture before/after screenshots for the explain cache.
+// The original function is renamed _executeActionImpl above; this wrapper is exported.
+async function executeAction(action) {
+  if (!action || !action.name) return { success: false };
+
+  // Capture before screenshot (non-fatal if it fails)
+  let before = null;
+  try { before = await screenshotModule.capture(); } catch (_) {}
+
+  const result = await _executeActionImpl(action);
+
+  // Capture after screenshot and push to cache
+  let after = null;
+  try { after = await screenshotModule.capture(); } catch (_) {}
+
+  pipeline.pushScreenshotEntry({
+    before,
+    after,
+    action: action.name,
+    timestamp: Date.now(),
+  });
+
+  return result;
+
+
 }
 
 // Captures a screenshot of the current screen for AI vision context.
