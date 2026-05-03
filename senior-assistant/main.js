@@ -147,6 +147,52 @@ function showToast(message, suggestions) {
 ipcMain.handle("openChatWindow", () => showChatWindow());
 ipcMain.handle("closeChatWindow", () => hideChatWindow());
 
+// Opens chat window and sends a start-voice signal so renderer auto-starts listening.
+ipcMain.handle("openChatWindowVoice", () => {
+  showChatWindow();
+  // Wait for the window to be visible before sending the signal.
+  // ready-to-show fires on first load; subsequent shows are instant so we use a short delay.
+  const sendVoice = () => {
+    if (chatWindow && !chatWindow.isDestroyed()) {
+      chatWindow.webContents.send("start-voice");
+    }
+  };
+  if (chatWindow && chatWindow.isVisible()) {
+    setTimeout(sendVoice, 80); // already loaded — small delay for render cycle
+  } else {
+    chatWindow.once("ready-to-show", () => setTimeout(sendVoice, 80));
+  }
+});
+
+// Temporarily makes the floating window focusable so getUserMedia works for mic recording.
+// Restored to non-focusable after a short delay so it doesn't steal focus from other apps.
+ipcMain.handle("requestMicFocus", () => {
+  if (!floatingWindow) return;
+  floatingWindow.setFocusable(true);
+  floatingWindow.focus();
+  // Restore after recording window — 10s is generous for any hold duration
+  setTimeout(() => {
+    if (floatingWindow && !floatingWindow.isDestroyed()) {
+      floatingWindow.setFocusable(false);
+    }
+  }, 10000);
+});
+
+// Opens chat window and sends a pre-filled query to be submitted automatically.
+ipcMain.handle("openChatWindowWithQuery", (_e, query) => {
+  showChatWindow();
+  const sendQuery = () => {
+    if (chatWindow && !chatWindow.isDestroyed()) {
+      chatWindow.webContents.send("submit-query", query);
+    }
+  };
+  if (chatWindow && chatWindow.isVisible()) {
+    setTimeout(sendQuery, 80);
+  } else {
+    chatWindow.once("ready-to-show", () => setTimeout(sendQuery, 80));
+  }
+});
+
 // --- IPC: title bar window controls ---
 
 ipcMain.handle("win-minimize", () => { if (chatWindow) chatWindow.minimize(); });

@@ -231,11 +231,14 @@ function setMicState(state, context) {
 async function handleUserInput(userText) {
   if (!userText || !userText.trim()) return;
 
+  console.log('[pipeline] handleUserInput:', userText);
   renderMessage("user", userText);
   setMicState(THINKING);
 
   try {
+    console.log('[pipeline] calling getResponse...');
     const response = await window.api.getResponse(userText);
+    console.log('[pipeline] agent response:', JSON.stringify(response));
     renderMessage("assistant", response.speak);
 
     if (response.requiresConfirmation && response.action) {
@@ -469,6 +472,7 @@ async function executeAndFinish(action) {
       await window.api.reboot();
     } else {
       await window.api.executeAction(action);
+      console.log('[pipeline] executeAction completed:', action.name);
       renderMessage("assistant", "Done.");
     }
     setMicState(IDLE, "completed");
@@ -493,3 +497,25 @@ window.api.onSystemCheck(async (suggestions) => {
     await showSuggestions(suggestions);
   }
 });
+
+// Listen for long-press voice trigger from the floating button.
+// When main sends "start-voice", auto-start listening if we're idle.
+if (window.api.onStartVoice) {
+  window.api.onStartVoice(() => {
+    if (currentState === IDLE) startListening();
+  });
+}
+
+// Listen for pre-filled query from floating button hold-to-record flow.
+// When main sends "submit-query", submit it as if the user typed and sent it.
+if (window.api.onSubmitQuery) {
+  window.api.onSubmitQuery((query) => {
+    console.log('[pipeline] submit-query received:', query);
+    if (currentState === IDLE && query && query.trim()) {
+      console.log('[pipeline] submitting to handleUserInput');
+      handleUserInput(query.trim());
+    } else {
+      console.warn('[pipeline] submit-query ignored — state:', currentState, 'query:', query);
+    }
+  });
+}
