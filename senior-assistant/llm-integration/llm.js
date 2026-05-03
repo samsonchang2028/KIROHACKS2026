@@ -1,4 +1,4 @@
-// llm.js — OpenRouter API calls for the senior accessibility assistant
+﻿// llm.js — OpenRouter API calls for the senior accessibility assistant
 // Exports: textQuery(userMessage), visionQuery(userMessage, screenshotBase64)
 
 'use strict';
@@ -25,7 +25,8 @@ ALLOWED ACTIONS:
 - setVolume(level)       level 0–100, ALWAYS return params as {"level": <number>} (mute = 0, full = 100)
 - openApp(name)          name is a string like "chrome" or "notepad"
 - openWebsite(url)       url is a full URL like "https://amazon.com" — use this when the user wants to visit a website
-- closeActiveWindow()    no params
+- closeApp(name)         name is a string like "chrome" or "notepad" — use this when the user wants to close/quit a specific app by name
+- closeActiveWindow()    no params — use only when the user says "close this window" without naming a specific app
 - closeScamPopup()       no params
 - readScreenAloud()      no params
 - sendHelpToFamily(summary)  summary is a short string
@@ -36,6 +37,7 @@ RESPONSE FORMAT:
 SPECIAL ACTIONS (not system actions):
 - If you need to see the screen to answer: {"action": "needs_screenshot", "params": null, "reply": "Let me take a look at your screen first."}
 - If the request doesn't match any action: {"action": "no_match", "params": null, "reply": "I'm not sure how to help with that, but I can adjust your settings, open apps, or open websites."}
+- If the user asks what just happened, what you did, what changed, seems confused about a recent action, or uses any variation of those phrases (even with typos): {"action": "explain_last_action", "params": null, "reply": "Let me explain what I just did."}
 - If the user says their computer is slow, laggy, frozen, or not working well: {"action": "checkPerformance", "params": null, "reply": "Let me check what's slowing things down."} — ALWAYS use checkPerformance for performance complaints, never clarify or no_match.
 - If the request is ambiguous: {"action": "clarify", "params": {"question": "..."}, "reply": "..."}
 - After seeing a screenshot: describe what you see on screen (name the apps/windows you can identify). Then ask the user what they'd like help with. Use clarify. For example: {"action": "clarify", "params": {"question": "I can see VS Code, Chrome, and a dark terminal window. Which one would you like me to help with?"}, "reply": "I can see VS Code, Chrome, and a dark terminal window. Which one would you like me to help with?"}
@@ -50,7 +52,7 @@ RULES:
 - If the user mentions a popup, virus warning, or scary message, use closeScamPopup.
 - If the user mentions text being small or hard to read, use setTextSize with scale 150 as a safe default.
 - For openApp: if the app name looks misspelled or you're not sure what app they mean, use clarify to ask. For example "open drrrcket" should respond with clarify: "Did you mean DrRacket?" When the user confirms, use openApp with the corrected name.
-- For openWebsite: if the user asks to open a website, store, or online service (e.g. "open Amazon", "go to YouTube", "open Gmail"), use openWebsite with the full URL. Always use https://. For example "open Amazon" → openWebsite with {"url": "https://www.amazon.com"}. Use openApp only for desktop applications.
+- For openWebsite: if the user asks to open a website, store, or online service (e.g. "open Amazon", "go to YouTube", "open Gmail"), use openWebsite with the full URL. Always use https://. For example "open Amazon" → openWebsite with {"url": "https://www.amazon.com"}. Use openApp only for desktop applications. If the user says "open [browser] and go to [site]" or "open [browser] and [site]", treat it as a single openWebsite action to that site — do NOT use openApp.
 - INTENT MAPPING — when the user's request implies a website or online service, use openWebsite:
   - "play music" / "play [artist/song]" / "play some [genre]" → ALWAYS use openWebsite https://open.spotify.com/search/[query] — music requests always go to Spotify
   - "I want to watch a video/something" → openWebsite https://www.youtube.com — if the user mentions a topic (e.g. "music videos", "cat videos", "cooking"), include it as a search: https://www.youtube.com/results?search_query=[topic]
@@ -85,11 +87,11 @@ const SHARED_OPTIONS = {
 // --- Robust JSON parser for LLM output ---
 // Haiku sometimes wraps JSON in markdown code fences or adds text around it.
 function parseLLMJson(raw) {
-    try { return JSON.parse(raw); } catch (_) {}
+    try { return JSON.parse(raw); } catch (_) { }
     // Try extracting JSON from markdown code fences or surrounding text
     const match = raw.match(/\{[\s\S]*\}/);
     if (match) {
-        try { return JSON.parse(match[0]); } catch (_) {}
+        try { return JSON.parse(match[0]); } catch (_) { }
     }
     throw new Error(`[LLM] Could not parse JSON from response: ${raw.slice(0, 200)}`);
 }
@@ -182,7 +184,55 @@ async function visionQuery(userMessage, screenshotBase64, history = []) {
     return parseLLMJson(raw);
 }
 
-module.exports = { textQuery, visionQuery };
+/**
+ * Explain what changed between a before and after screenshot.
+ * Used when the user asks "what just happened?" after an action.
+ *
+ * @param {string} beforeBase64 — raw base64 PNG before the action
+ * @param {string} afterBase64  — raw base64 PNG after the action
+ * @param {string} actionName   — the action that was executed (e.g. "setVolume")
+ * @returns {Promise<string>}   — plain English explanation for the user
+ */
+async function explainScreenshotDiff(beforeBase64, afterBase64, actionName) {
+    const messages = [
+        {
+            role: 'system',
+            content: 'You are an accessibility assistant for seniors. Look at the two screenshots and describe in 1 simple sentence what changed on the actual desktop — ignore the chat window. Focus on visible changes like volume icons, brightness, open apps, or windows. Keep it under 15 words. Example: "I turned your volume down to zero."',
+        },
+        {
+            role: 'user',
+            content: [
+                { type: 'text', text: `I just ran the action "${actionName}". Here is the screen before:` },
+                { type: 'image_url', image_url: { url: `data:image/png;base64,${beforeBase64}` } },
+                { type: 'text', text: 'And here is the screen after:' },
+                { type: 'image_url', image_url: { url: `data:image/png;base64,${afterBase64}` } },
+                { type: 'text', text: 'What changed on the desktop (not the chat window)? One short sentence.' },
+            ],
+        },
+    ];
+
+    const body = {
+        model: 'openai/gpt-4o-mini',
+        messages,
+        max_tokens: 128,
+        temperature: 0,
+    };
+
+    const res = await fetch(OPENROUTER_URL, {
+        method: 'POST',
+        headers: HEADERS,
+        body: JSON.stringify(body),
+    });
+
+    if (!res.ok) {
+        throw new Error(`[LLM] explainScreenshotDiff HTTP ${res.status}: ${res.statusText}`);
+    }
+
+    const data = await res.json();
+    return data.choices[0].message.content.trim();
+}
+
+module.exports = { textQuery, visionQuery, explainScreenshotDiff };
 
 // --- Task 3.4: Verification block (TEMPORARY — remove after verification) ---
 // Run with: node llm-integration/llm.js  (from senior-assistant/)

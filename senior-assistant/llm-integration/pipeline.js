@@ -16,6 +16,7 @@ const ALLOWED_ACTIONS = [
     'setVolume',
     'openApp',
     'openWebsite',
+    'closeApp',
     'closeActiveWindow',
     'closeScamPopup',
     'readScreenAloud',
@@ -24,7 +25,7 @@ const ALLOWED_ACTIONS = [
     'needs_screenshot',
     'no_match',
     'clarify',
-    'checkPerformance',
+    'explain_last_action',
 ];
 
 // Actions that require user confirmation before execution.
@@ -33,13 +34,14 @@ const REQUIRES_CONFIRMATION = new Set([
     'setTextSize',
     'openApp',
     'openWebsite',
+    'closeApp',
     'closeActiveWindow',
     'closeScamPopup',
     'sendHelpToFamily',
 ]);
 
 // Non-executable control actions — these return action: null in the stub contract
-const NON_EXECUTABLE = new Set(['needs_screenshot', 'no_match', 'clarify', 'checkPerformance']);
+const NON_EXECUTABLE = new Set(['needs_screenshot', 'no_match', 'clarify', 'explain_last_action']);
 
 /**
  * Validates an action string against the allowlist.
@@ -108,6 +110,44 @@ let llm = require('./llm');
 let screenshot = require('./screenshot');
 const { checkSystem } = require('../system-monitor');
 
+// --- Screenshot cache (in-memory only, ZDR — never written to disk) ---
+// Populated by stubs.js wrapping executeAction with before/after captures.
+// Cleared when the session ends (app close). Never shown in the UI.
+const screenshotCache = [];
+
+function pushScreenshotEntry(entry) {
+    screenshotCache.push(entry);
+}
+
+async function explainLastAction() {
+    if (screenshotCache.length === 0) {
+        return "I haven't done anything yet this session.";
+    }
+    const last = screenshotCache[screenshotCache.length - 1];
+    if (!last.before || !last.after) {
+        return `I ran "${last.action}" but I don't have screenshots to show you what changed.`;
+    }
+    return llm.explainScreenshotDiff(last.before, last.after, last.action);
+}
+
+function _isExplainQuery(msg) {
+    const lower = (msg || '').toLowerCase();
+    return (
+        lower.includes('what just happened') ||
+        lower.includes('what did you do') ||
+        lower.includes('what changed') ||
+        lower.includes('what did that do') ||
+        lower.includes('what was that') ||
+        lower.includes('explain what you did') ||
+        lower.includes("i don't understand") ||
+        lower.includes("i dont understand") ||
+        lower.includes('confused') ||
+        lower.includes('what happened')
+    );
+}
+
+
+
 // --- Conversation history (in-memory only, never written to disk) ---
 // Keeps the last few exchanges so the LLM can handle follow-ups and clarifications.
 // Cleared when the app closes — no persistence across sessions.
@@ -138,6 +178,8 @@ async function handleQuery(userMessage) {
         // Add user message to conversation history
         addToHistory('user', userMessage);
 
+
+
         // Step 1: Text query with conversation history
         let parsed = await llm.textQuery(userMessage, conversationHistory.slice(0, -1));
 
@@ -164,6 +206,20 @@ async function handleQuery(userMessage) {
         }
 
         const action = validatedAction;
+
+        // Handle explain_last_action — LLM detected user confusion about a recent action
+        if (action === 'explain_last_action') {
+            const explanation = await explainLastAction().catch(() =>
+                "I'm not sure what happened — something may have gone wrong."
+            );
+            addToHistory('assistant', explanation);
+            return {
+                speak: explanation,
+                action: null,
+                requiresConfirmation: false,
+                suggestions: [],
+            };
+        }
         const reply = parsed.reply || 'Done.';
         let params = parsed.params || null;
 
@@ -215,7 +271,7 @@ async function handleQuery(userMessage) {
     }
 }
 
-module.exports = { handleQuery, clearHistory, validateAction, clampLevel, nearestScale, ALLOWED_ACTIONS, REQUIRES_CONFIRMATION };
+module.exports = { handleQuery, clearHistory, validateAction, clampLevel, nearestScale, ALLOWED_ACTIONS, REQUIRES_CONFIRMATION, pushScreenshotEntry };
 
 // =============================================================================
 // Property tests — run with: node pipeline.js  (from senior-assistant/llm-integration/)
