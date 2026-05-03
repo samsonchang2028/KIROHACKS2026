@@ -649,6 +649,8 @@ async function _executeActionImpl(action) {
             messages: "Messages",
             photos: "Photos",
             music: "Music",
+            zoom: "zoom.us",
+            "zoom.us": "zoom.us",
           };
 
           const appName = macAppMap[name] || rawName;
