@@ -296,14 +296,11 @@ async function showSuggestions(suggestions) {
     }
   }
 
-  // Reboot: separate message
+  // Reboot: just recommend it, don't offer to do it
   if (rebootSuggestion) {
-    renderInlineConfirm(
-      rebootSuggestion + "\n\nWould you like me to restart your computer?",
-      "Yes, restart", "No, not now",
-      () => executeAndFinish({ name: "_reboot", params: {} }),
-      "Your computer has been on a while. Want me to restart it?"
-    );
+    renderMessage("assistant", rebootSuggestion + " Try restarting your computer when you get a chance — it only takes a minute and can make a big difference.");
+    window.api.speak("Your computer has been on a while. Try restarting it when you get a chance.");
+    setMicState(IDLE);
     return;
   }
 
