@@ -63,10 +63,10 @@ const FILLER_WORDS = [
 // Longer phrases listed first so "you know" matches before "you".
 const _FILLER_RE = new RegExp(
   "\\b(?:" +
-    FILLER_WORDS.map((f) => f.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join(
-      "|",
-    ) +
-    ")\\b",
+  FILLER_WORDS.map((f) => f.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join(
+    "|",
+  ) +
+  ")\\b",
   "gi",
 );
 
@@ -254,10 +254,10 @@ async function _transcribeCloud(buffer) {
     // Use curl for the multipart form upload — simpler than pulling in a full HTTP library.
     const raw = execSync(
       `curl -s -X POST "https://api.openai.com/v1/audio/transcriptions" ` +
-        `-H "Authorization: Bearer ${apiKey}" ` +
-        `-F "model=whisper-1" ` +
-        `-F "language=en" ` +
-        `-F "file=@${tmpFile}"`,
+      `-H "Authorization: Bearer ${apiKey}" ` +
+      `-F "model=whisper-1" ` +
+      `-F "language=en" ` +
+      `-F "file=@${tmpFile}"`,
       { timeout: 30000 },
     ).toString();
 
@@ -604,7 +604,7 @@ async function _executeActionImpl(action) {
           const dpi = dpiMap[scale] ?? 144;
           execSync(
             `reg add "HKCU\\Control Panel\\Desktop" /v LogPixels /t REG_DWORD /d ${dpi} /f && ` +
-              `rundll32.exe user32.dll,UpdatePerUserSystemParameters`,
+            `rundll32.exe user32.dll,UpdatePerUserSystemParameters`,
           );
         }
         break;
@@ -687,13 +687,13 @@ async function _executeActionImpl(action) {
             zoom: fs.existsSync(path.join(appData, "Zoom", "bin", "Zoom.exe"))
               ? path.join(appData, "Zoom", "bin", "Zoom.exe")
               : fs.existsSync(path.join(localAppData, "Zoom", "bin", "Zoom.exe"))
-              ? path.join(localAppData, "Zoom", "bin", "Zoom.exe")
-              : null,
+                ? path.join(localAppData, "Zoom", "bin", "Zoom.exe")
+                : null,
             "zoom workplace": fs.existsSync(path.join(appData, "Zoom", "bin", "Zoom.exe"))
               ? path.join(appData, "Zoom", "bin", "Zoom.exe")
               : fs.existsSync(path.join(localAppData, "Zoom", "bin", "Zoom.exe"))
-              ? path.join(localAppData, "Zoom", "bin", "Zoom.exe")
-              : null,
+                ? path.join(localAppData, "Zoom", "bin", "Zoom.exe")
+                : null,
           };
 
           if (appMap[name]) {
@@ -838,13 +838,13 @@ async function executeAction(action) {
 
   // Capture before screenshot (non-fatal if it fails)
   let before = null;
-  try { before = await screenshotModule.capture(); } catch (_) {}
+  try { before = await screenshotModule.capture(); } catch (_) { }
 
   const result = await _executeActionImpl(action);
 
   // Capture after screenshot and push to cache
   let after = null;
-  try { after = await screenshotModule.capture(); } catch (_) {}
+  try { after = await screenshotModule.capture(); } catch (_) { }
 
   pipeline.pushScreenshotEntry({
     before,

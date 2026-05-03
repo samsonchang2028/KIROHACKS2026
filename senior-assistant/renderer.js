@@ -76,7 +76,7 @@ function startSilenceDetection() {
 function stopSilenceDetection() {
   silenceDetectionActive = false;
   if (silenceTimer) { cancelAnimationFrame(silenceTimer); silenceTimer = null; }
-  if (audioContext) { audioContext.close().catch(() => {}); audioContext = null; }
+  if (audioContext) { audioContext.close().catch(() => { }); audioContext = null; }
 }
 
 async function initMic() {
@@ -531,6 +531,12 @@ async function executeAndFinish(action) {
   }
 }
 
+<<<<<<< HEAD
+// --- Title bar controls ---
+document.getElementById("tb-minimize").addEventListener("click", () => window.api.winMinimize());
+document.getElementById("tb-maximize").addEventListener("click", () => window.api.winMaximize());
+document.getElementById("tb-close").addEventListener("click", () => window.api.winClose());
+=======
 // --- Walkthrough event handling ---
 // Tracks walkthrough progress from the chat side. On wait-for-input, captures
 // voice/text and sends it back. On finish/cancel, returns to idle.
@@ -565,6 +571,7 @@ function submitWalkthroughInput(text) {
   walkthroughInputMode = false;
   window.api.submitWalkthroughInput(text);
 }
+>>>>>>> ac54cee53148ab51d83728e77ef36c3aa78d3dbc
 
 // --- Init ---
 
