@@ -25,7 +25,6 @@ const webPreferences = {
 
 let floatingWindow = null;
 let chatWindow = null;
-let toastWindow = null;
 
 // --- Window factories ---
 
@@ -95,52 +94,7 @@ function hideChatWindow() {
   if (chatWindow) { chatWindow.hide(); }
 }
 
-function showToast(message, suggestions) {
-  if (toastWindow) { toastWindow.close(); toastWindow = null; }
-
-  const { width, height } = screen.getPrimaryDisplay().workAreaSize;
-  const toastW = 300, toastH = 60;
-
-  toastWindow = new BrowserWindow({
-    width: toastW,
-    height: toastH,
-    x: width - toastW - FLOATING.margin,
-    y: height - FLOATING.height - FLOATING.margin - toastH - 10,
-    frame: false,
-    transparent: true,
-    alwaysOnTop: true,
-    skipTaskbar: true,
-    resizable: false,
-    focusable: false,
-    webPreferences: {
-      preload: path.join(__dirname, "preload.js"),
-      contextIsolation: false,
-      nodeIntegration: true,
-    },
-  });
-
-  toastWindow.setAlwaysOnTop(true, "screen-saver");
-  toastWindow.loadFile("toast.html");
-
-  toastWindow.webContents.once("did-finish-load", () => {
-    toastWindow.webContents.send("show-toast", message);
-  });
-
-  // Click Fix kills heavy processes directly
-  ipcMain.handleOnce("toast-clicked", async () => {
-    const procs = getHeavyProcesses();
-    const allPids = procs.flatMap(p => p.pids || [p.pid]);
-    const killed = killProcesses(allPids);
-    if (toastWindow) { toastWindow.close(); toastWindow = null; }
-    // Show a brief "done" toast
-    showToast(`Closed ${killed} app${killed !== 1 ? 's' : ''} to free up memory`, []);
-  });
-
-  // Auto-dismiss after 8 seconds
-  setTimeout(() => {
-    if (toastWindow) { toastWindow.close(); toastWindow = null; }
-  }, 8000);
-}
+function showToast(message, suggestions) {} // removed — use chat window instead
 
 // --- IPC: window management ---
 
@@ -256,12 +210,11 @@ app.whenReady().then(() => {
   // If the demo machine uses a CJK IME, disable this shortcut before presenting.
   globalShortcut.register("CommandOrControl+Space", () => showChatWindow());
 
-  // Ctrl+Shift+S — trigger memory check (toast + chat in background)
+  // Ctrl+Shift+S — trigger memory check (chat message only, no toast)
   globalShortcut.register("CommandOrControl+Shift+S", () => {
     const suggestions = checkSystem();
     if (suggestions.length > 0) {
-      showToast("Apps are slowing down your computer", suggestions);
-      if (!chatWindow) createChatWindow();
+      showChatWindow();
       setTimeout(() => {
         if (chatWindow) chatWindow.webContents.send("system-check", suggestions);
       }, 300);

@@ -24,6 +24,7 @@ const ALLOWED_ACTIONS = [
     'needs_screenshot',
     'no_match',
     'clarify',
+    'checkPerformance',
 ];
 
 // Actions that require user confirmation before execution.
@@ -38,7 +39,7 @@ const REQUIRES_CONFIRMATION = new Set([
 ]);
 
 // Non-executable control actions — these return action: null in the stub contract
-const NON_EXECUTABLE = new Set(['needs_screenshot', 'no_match', 'clarify']);
+const NON_EXECUTABLE = new Set(['needs_screenshot', 'no_match', 'clarify', 'checkPerformance']);
 
 /**
  * Validates an action string against the allowlist.
@@ -181,6 +182,17 @@ async function handleQuery(userMessage) {
             ? null
             : { name: action, params };
 
+        // For checkPerformance, run the system monitor and return suggestions
+        let suggestions = [];
+        if (action === 'checkPerformance') {
+            try {
+                suggestions = checkSystem() || [];
+                console.log('[pipeline] checkPerformance: suggestions:', suggestions);
+            } catch (sysErr) {
+                console.error('[pipeline] checkSystem error:', sysErr.message);
+            }
+        }
+
         // Add assistant reply to conversation history
         addToHistory('assistant', reply);
 
@@ -188,7 +200,7 @@ async function handleQuery(userMessage) {
             speak: reply,
             action: executableAction,
             requiresConfirmation: REQUIRES_CONFIRMATION.has(action),
-            suggestions: [],
+            suggestions,
         };
 
     } catch (err) {

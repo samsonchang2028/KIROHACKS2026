@@ -355,8 +355,8 @@ function _speakWithEdgeTts(text) {
     shellArg = "-c";
     cleanupCmd = `rm -f "${tmpMp3}"`;
   } else if (platform === "win32") {
-    // PowerShell can play audio via .NET.
-    playCmd = `powershell -NoProfile -Command "(New-Object Media.SoundPlayer '${tmpMp3}').PlaySync()"`;
+    // Use WMP COM object — SoundPlayer only handles WAV, not MP3.
+    playCmd = `powershell -NoProfile -Command "$p = New-Object -ComObject WMPlayer.OCX; $p.URL = '${tmpMp3}'; $p.controls.play(); Start-Sleep -Seconds 10; $p.close()"`;
     shellBin = "cmd";
     shellArg = "/c";
     cleanupCmd = `del /q "${tmpMp3}"`;
