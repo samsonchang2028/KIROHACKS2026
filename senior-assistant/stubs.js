@@ -768,21 +768,6 @@ async function _executeActionImpl(action) {
         }
         break;
       }
-      case "closeScamPopup": {
-        if (platform === "darwin") {
-          execSync(
-            `osascript -e 'tell application (path to frontmost application as text) to close the front window'`,
-            { stdio: "ignore", timeout: 10000 },
-          );
-        } else {
-          execSync(`"${NIRCMD}" win hide title "senior-assistant""`);
-          await new Promise((r) => setTimeout(r, 500));
-          execSync(`"${NIRCMD}" sendkeypress 0x73+alt`);
-          await new Promise((r) => setTimeout(r, 300));
-          execSync(`"${NIRCMD}" win show title "senior-assistant""`);
-        }
-        break;
-      }
       case "readScreenAloud":
       case "sendHelpToFamily":
       case null:
