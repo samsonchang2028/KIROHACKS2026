@@ -1,4 +1,4 @@
-// llm.js — OpenRouter API calls for the senior accessibility assistant
+﻿// llm.js — OpenRouter API calls for the senior accessibility assistant
 // Exports: textQuery(userMessage), visionQuery(userMessage, screenshotBase64)
 
 'use strict';
@@ -38,7 +38,7 @@ SPECIAL ACTIONS (not system actions):
 - If you need to see the screen to answer: {"action": "needs_screenshot", "params": null, "reply": "Let me take a look at your screen first."}
 - If the request doesn't match any action: {"action": "no_match", "params": null, "reply": "I'm not sure how to help with that, but I can adjust your settings, open apps, or open websites."}
 - If the user asks what just happened, what you did, what changed, seems confused about a recent action, or uses any variation of those phrases (even with typos): {"action": "explain_last_action", "params": null, "reply": "Let me explain what I just did."}
-- If the user says their computer is slow, laggy, or frozen: {"action": "checkPerformance", "params": null, "reply": "Let me check what's slowing things down."}
+- If the user says their computer is slow, laggy, frozen, or not working well: {"action": "checkPerformance", "params": null, "reply": "Let me check what's slowing things down."} — ALWAYS use checkPerformance for performance complaints, never clarify or no_match.
 - If the request is ambiguous: {"action": "clarify", "params": {"question": "..."}, "reply": "..."}
 - After seeing a screenshot: describe what you see on screen (name the apps/windows you can identify). Then ask the user what they'd like help with. Use clarify. For example: {"action": "clarify", "params": {"question": "I can see VS Code, Chrome, and a dark terminal window. Which one would you like me to help with?"}, "reply": "I can see VS Code, Chrome, and a dark terminal window. Which one would you like me to help with?"}
 - When the user refers to something on screen (like "the dark window" or "that popup"), use your memory of the screenshot to figure out which app they mean, then take the appropriate action. For example if they say "close the dark window" and you saw a dark terminal, use closeActiveWindow.
