@@ -26,6 +26,7 @@ const webPreferences = {
 
 let floatingWindow = null;
 let chatWindow = null;
+let overlayWindow = null;
 
 // --- Window factories ---
 
@@ -93,6 +94,36 @@ function showChatWindow() {
 
 function hideChatWindow() {
   if (chatWindow) { chatWindow.hide(); }
+}
+
+function createOverlay() {
+  if (overlayWindow) return overlayWindow;
+  const { width, height } = screen.getPrimaryDisplay().bounds;
+  overlayWindow = new BrowserWindow({
+    width, height, x: 0, y: 0,
+    frame: false, transparent: true, alwaysOnTop: true,
+    skipTaskbar: true, resizable: false, focusable: false,
+    hasShadow: false,
+    webPreferences: { contextIsolation: false, nodeIntegration: true },
+  });
+  overlayWindow.setAlwaysOnTop(true, "screen-saver");
+  overlayWindow.setIgnoreMouseEvents(true);
+  overlayWindow.loadFile("overlay.html");
+  overlayWindow.on("closed", () => { overlayWindow = null; });
+  return overlayWindow;
+}
+
+function showHighlight(rect) {
+  const ov = createOverlay();
+  ov.webContents.send("show-highlight", rect);
+}
+
+function hideHighlight() {
+  if (overlayWindow) overlayWindow.webContents.send("hide-highlight");
+}
+
+function destroyOverlay() {
+  if (overlayWindow) { overlayWindow.close(); overlayWindow = null; }
 }
 
 function showToast(message, suggestions) {} // removed — use chat window instead
@@ -202,8 +233,10 @@ ipcMain.handle("startWalkthrough", async (_e, name) => {
     speak: stubs.speak,
     executeAction: stubs.executeAction,
     showChat: showChatWindow,
-    hideChat: hideChatWindow,
-    destroyOverlay: () => {},
+    hideChat: () => {},
+    destroyOverlay,
+    showHighlight,
+    hideHighlight,
   });
 });
 
@@ -232,6 +265,7 @@ app.on("ready", async () => {
   );
 
   createFloatingWindow();
+  createOverlay(); // pre-create so highlights appear instantly
 
   globalShortcut.register("CommandOrControl+Space", () => showChatWindow());
 

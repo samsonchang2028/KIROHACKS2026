@@ -493,10 +493,8 @@ async function stopListening() {
 
 async function handleConfirm(confirmed, action) {
   if (confirmed && action?.__walkthrough) {
-    // Walkthrough confirmed — start it and minimize chat.
     setMicState(IDLE);
     window.api.startWalkthrough(action.__walkthrough);
-    window.api.closeChatWindow();
   } else if (confirmed) {
     setMicState(DOING);
     await executeAndFinish(action);

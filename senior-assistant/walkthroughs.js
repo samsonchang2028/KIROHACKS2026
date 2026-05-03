@@ -32,28 +32,38 @@ function waitForInput(run) {
 
 const ZOOM_JOIN = [
   {
-    type: "speak",
-    text: "Okay, I'll help you join your Zoom meeting. First I'll open Zoom for you.",
-  },
-  {
     type: "launch_app",
     app: "zoom",
   },
   {
     type: "wait",
-    durationMs: 3000,
+    durationMs: 5000,
+  },
+  {
+    type: "show_chat",
+  },
+  {
+    type: "highlight",
+    x: 350, y: 600, w: 147, h: 43,
   },
   {
     type: "speak",
-    text: "Zoom is open now. Look for the Join a Meeting button near the center of the window and click it.",
+    text: "I've opened Zoom for you. Look for the Join a Meeting button — I've highlighted it.",
   },
   {
     type: "wait_for_input",
     text: "Say 'done' or tap Send when you've clicked Join.",
   },
   {
+    type: "hide_highlight",
+  },
+  {
     type: "speak",
     text: "Now type your meeting ID into the text field, then click the Join button.",
+  },
+  {
+    type: "highlight",
+    x: 440, y: 540, w: 228, h: 38,  // TODO: calibrate on demo machine
   },
   {
     type: "wait_for_input",
@@ -80,6 +90,16 @@ async function handleStep(step, ctx) {
       break;
     case "launch_app":
       await ctx.executeAction({ name: "openApp", params: { name: step.app } });
+      if (step.position) {
+        const { x, y, w, h } = step.position;
+        const { execSync } = require("child_process");
+        try {
+          if (process.platform === "darwin") {
+            const appName = step.app === "zoom" ? "zoom.us" : step.app;
+            execSync(`osascript -e 'tell application "${appName}" to set bounds of front window to {${x}, ${y}, ${x + w}, ${y + h}}'`, { stdio: "ignore", timeout: 5000 });
+          }
+        } catch (_) {}
+      }
       break;
     case "wait":
       await delay(step.durationMs);
@@ -88,7 +108,17 @@ async function handleStep(step, ctx) {
       ctx.showChat();
       ctx.emit({ type: "wait-for-input", text: step.text });
       break;
+    case "highlight":
+      ctx.showHighlight({ x: step.x, y: step.y, w: step.w, h: step.h });
+      break;
+    case "show_chat":
+      ctx.showChat();
+      break;
+    case "hide_highlight":
+      ctx.hideHighlight();
+      break;
     case "done":
+      ctx.hideHighlight();
       break;
   }
 }
@@ -114,7 +144,6 @@ async function runWalkthrough(name, ctx) {
       await handleStep(step, ctx);
       const raw = await waitForInput(run);
       if (run.cancelled) break;
-      ctx.hideChat();
       ctx.emit({ type: "step-completed", index: i });
       continue;
     }

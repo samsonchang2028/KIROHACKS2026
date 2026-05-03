@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <style>
+    * { margin: 0; padding: 0; }
+    body { background: transparent; overflow: hidden; }
+    #highlight {
+      position: absolute;
+      border: 3px solid #FF4444;
+      border-radius: 8px;
+      box-shadow: 0 0 0 4px rgba(255,68,68,0.3), 0 0 20px rgba(255,68,68,0.4);
+      animation: pulse 1.2s ease-in-out infinite;
+      display: none;
+      pointer-events: none;
+    }
+    @keyframes pulse {
+      0%, 100% { box-shadow: 0 0 0 4px rgba(255,68,68,0.3), 0 0 20px rgba(255,68,68,0.4); }
+      50% { box-shadow: 0 0 0 8px rgba(255,68,68,0.15), 0 0 30px rgba(255,68,68,0.5); }
+    }
+  </style>
+</head>
+<body>
+  <div id="highlight"></div>
+  <script>
+    const { ipcRenderer } = require('electron');
+    const el = document.getElementById('highlight');
+
+    ipcRenderer.on('show-highlight', (_e, rect) => {
+      el.style.left = rect.x + 'px';
+      el.style.top = rect.y + 'px';
+      el.style.width = rect.w + 'px';
+      el.style.height = rect.h + 'px';
+      el.style.display = 'block';
+    });
+
+    ipcRenderer.on('hide-highlight', () => {
+      el.style.display = 'none';
+    });
+  </script>
+</body>
+</html>
