@@ -141,7 +141,9 @@ overlay.html                                 Transparent highlight overlay for w
 
 ## Troubleshooting
 
-- **"Payment Required" errors:** Your OpenRouter account is out of credits. Add funds at https://openrouter.ai/settings/credits
+- **"Payment Required" or "402" errors:** Your OpenRouter account is out of credits. Add funds at https://openrouter.ai/settings/credits ($5 is enough for hundreds of requests). The terminal will show a clear message when this happens.
+- **"Unauthorized" or "401" errors:** Your OPENROUTER_API_KEY is invalid or missing. Check your `.env` file and make sure the key is correct. Get a key at https://openrouter.ai.
+- **"I had trouble with that" on every request:** This usually means the API key has no credits. Check the terminal output for detailed error messages.
 - **"Whisper warm-up failed":** The whisper.cpp binary or model is missing. Delete `node_modules` and run `npm install` again.
 - **No sound:** Install edge-tts (`pip install edge-tts`) or verify your OS TTS works.
 - **Transcription empty:** Check that ffmpeg is installed (`ffmpeg -version`).

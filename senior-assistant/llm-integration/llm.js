@@ -127,6 +127,15 @@ async function textQuery(userMessage, history = []) {
     });
 
     if (!res.ok) {
+        if (res.status === 401) {
+            console.error('\n[LLM ERROR] ❌ OPENROUTER_API_KEY is invalid or missing.');
+            console.error('[LLM ERROR] 1. Check your .env file has a valid OPENROUTER_API_KEY');
+            console.error('[LLM ERROR] 2. Get a key at https://openrouter.ai\n');
+        } else if (res.status === 402) {
+            console.error('\n[LLM ERROR] ❌ OpenRouter account has no credits remaining.');
+            console.error('[LLM ERROR] Add credits at https://openrouter.ai/settings/credits');
+            console.error('[LLM ERROR] $5 is enough for hundreds of requests.\n');
+        }
         throw new Error(`[LLM] textQuery HTTP ${res.status}: ${res.statusText}`);
     }
 
@@ -175,6 +184,13 @@ async function visionQuery(userMessage, screenshotBase64, history = []) {
     });
 
     if (!res.ok) {
+        if (res.status === 401) {
+            console.error('\n[LLM ERROR] ❌ OPENROUTER_API_KEY is invalid or missing.');
+            console.error('[LLM ERROR] Check your .env file. Get a key at https://openrouter.ai\n');
+        } else if (res.status === 402) {
+            console.error('\n[LLM ERROR] ❌ OpenRouter account has no credits remaining.');
+            console.error('[LLM ERROR] Add credits at https://openrouter.ai/settings/credits\n');
+        }
         throw new Error(`[LLM] visionQuery HTTP ${res.status}: ${res.statusText}`);
     }
 
@@ -225,6 +241,9 @@ async function explainScreenshotDiff(beforeBase64, afterBase64, actionName) {
     });
 
     if (!res.ok) {
+        if (res.status === 401 || res.status === 402) {
+            console.error('\n[LLM ERROR] ❌ OpenRouter API key issue. Check .env and credits at https://openrouter.ai/settings/credits\n');
+        }
         throw new Error(`[LLM] explainScreenshotDiff HTTP ${res.status}: ${res.statusText}`);
     }
 
