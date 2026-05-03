@@ -280,7 +280,7 @@ async function showSuggestions(suggestions) {
         const allPids = procs.flatMap(p => p.pids || [p.pid]);
         const lines = memSuggestion
           + "\n\nThese apps are using the most memory:\n"
-          + procs.map(p => `• ${p.friendlyName} — using ${p.memPct}% of memory`).join("\n")
+          + procs.map(p => `• ${p.friendlyName}: ${p.memPct}% memory`).join("\n")
           + "\n\nWould you like me to close them?";
 
         renderInlineConfirm(lines, "Yes, close them", "No, leave them",
@@ -487,12 +487,9 @@ async function executeAndFinish(action) {
 initMic();
 setMicState(IDLE);
 
-// Proactive system check on startup
-(async () => {
-  try {
-    const suggestions = await window.api.checkSystem();
-    if (suggestions.length > 0) {
-      await showSuggestions(suggestions);
-    }
-  } catch (_) {}
-})();
+// Listen for proactive system check trigger from main process
+window.api.onSystemCheck(async (suggestions) => {
+  if (suggestions.length > 0) {
+    await showSuggestions(suggestions);
+  }
+});

@@ -162,6 +162,15 @@ app.whenReady().then(() => {
   // If the demo machine uses a CJK IME, disable this shortcut before presenting.
   globalShortcut.register("CommandOrControl+Space", () => showChatWindow());
 
+  // Ctrl+Shift+S — trigger proactive system check (for demo)
+  globalShortcut.register("CommandOrControl+Shift+S", () => {
+    showChatWindow();
+    const suggestions = checkSystem();
+    if (chatWindow && suggestions.length > 0) {
+      chatWindow.webContents.send("system-check", suggestions);
+    }
+  });
+
   app.on("activate", () => {
     if (!floatingWindow) createFloatingWindow();
   });

@@ -26,5 +26,6 @@ contextBridge.exposeInMainWorld("api", {
   getHeavyProcesses: () => ipcRenderer.invoke("getHeavyProcesses"),
   killProcesses: (pids) => ipcRenderer.invoke("killProcesses", pids),
   checkSystem: () => ipcRenderer.invoke("checkSystem"),
+  onSystemCheck: (cb) => ipcRenderer.on("system-check", (_e, suggestions) => cb(suggestions)),
   reboot: () => ipcRenderer.invoke("reboot"),
 });
