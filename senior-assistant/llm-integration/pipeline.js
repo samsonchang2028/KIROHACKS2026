@@ -217,7 +217,7 @@ async function handleQuery(userMessage) {
                 speak: explanation,
                 action: null,
                 requiresConfirmation: false,
-                suggestions: checkSystem(),
+                suggestions: [],
             };
         }
         const reply = parsed.reply || 'Done.';
@@ -238,6 +238,17 @@ async function handleQuery(userMessage) {
             ? null
             : { name: action, params };
 
+        // For checkPerformance, run the system monitor and return suggestions
+        let suggestions = [];
+        if (action === 'checkPerformance') {
+            try {
+                suggestions = checkSystem() || [];
+                console.log('[pipeline] checkPerformance: suggestions:', suggestions);
+            } catch (sysErr) {
+                console.error('[pipeline] checkSystem error:', sysErr.message);
+            }
+        }
+
         // Add assistant reply to conversation history
         addToHistory('assistant', reply);
 
@@ -245,7 +256,7 @@ async function handleQuery(userMessage) {
             speak: reply,
             action: executableAction,
             requiresConfirmation: REQUIRES_CONFIRMATION.has(action),
-            suggestions: [],
+            suggestions,
         };
 
     } catch (err) {

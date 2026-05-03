@@ -37,8 +37,8 @@ RESPONSE FORMAT:
 SPECIAL ACTIONS (not system actions):
 - If you need to see the screen to answer: {"action": "needs_screenshot", "params": null, "reply": "Let me take a look at your screen first."}
 - If the request doesn't match any action: {"action": "no_match", "params": null, "reply": "I'm not sure how to help with that, but I can adjust your settings, open apps, or open websites."}
-- If the user seems confused about what just happened, asks what you did, what changed, or doesn't understand a recent action (even with typos): {"action": "explain_last_action", "params": null, "reply": "Let me explain what I just did."}
-- If the user says their computer is slow, laggy, or frozen: {"action": "clarify", "params": {"question": "I can check on that. Would you like me to suggest some things that might help?"}, "reply": "Let me see what might help speed things up."}
+- If the user asks what just happened, what you did, what changed, seems confused about a recent action, or uses any variation of those phrases (even with typos): {"action": "explain_last_action", "params": null, "reply": "Let me explain what I just did."}
+- If the user says their computer is slow, laggy, or frozen: {"action": "checkPerformance", "params": null, "reply": "Let me check what's slowing things down."}
 - If the request is ambiguous: {"action": "clarify", "params": {"question": "..."}, "reply": "..."}
 - After seeing a screenshot: describe what you see on screen (name the apps/windows you can identify). Then ask the user what they'd like help with. Use clarify. For example: {"action": "clarify", "params": {"question": "I can see VS Code, Chrome, and a dark terminal window. Which one would you like me to help with?"}, "reply": "I can see VS Code, Chrome, and a dark terminal window. Which one would you like me to help with?"}
 - When the user refers to something on screen (like "the dark window" or "that popup"), use your memory of the screenshot to figure out which app they mean, then take the appropriate action. For example if they say "close the dark window" and you saw a dark terminal, use closeActiveWindow.
@@ -52,7 +52,7 @@ RULES:
 - If the user mentions a popup, virus warning, or scary message, use closeScamPopup.
 - If the user mentions text being small or hard to read, use setTextSize with scale 150 as a safe default.
 - For openApp: if the app name looks misspelled or you're not sure what app they mean, use clarify to ask. For example "open drrrcket" should respond with clarify: "Did you mean DrRacket?" When the user confirms, use openApp with the corrected name.
-- For openWebsite: if the user asks to open a website, store, or online service (e.g. "open Amazon", "go to YouTube", "open Gmail"), use openWebsite with the full URL. Always use https://. For example "open Amazon" → openWebsite with {"url": "https://www.amazon.com"}. Use openApp only for desktop applications.
+- For openWebsite: if the user asks to open a website, store, or online service (e.g. "open Amazon", "go to YouTube", "open Gmail"), use openWebsite with the full URL. Always use https://. For example "open Amazon" → openWebsite with {"url": "https://www.amazon.com"}. Use openApp only for desktop applications. If the user says "open [browser] and go to [site]" or "open [browser] and [site]", treat it as a single openWebsite action to that site — do NOT use openApp.
 - INTENT MAPPING — when the user's request implies a website or online service, use openWebsite:
   - "play music" / "play [artist/song]" / "play some [genre]" → ALWAYS use openWebsite https://open.spotify.com/search/[query] — music requests always go to Spotify
   - "I want to watch a video/something" → openWebsite https://www.youtube.com — if the user mentions a topic (e.g. "music videos", "cat videos", "cooking"), include it as a search: https://www.youtube.com/results?search_query=[topic]
@@ -87,11 +87,11 @@ const SHARED_OPTIONS = {
 // --- Robust JSON parser for LLM output ---
 // Haiku sometimes wraps JSON in markdown code fences or adds text around it.
 function parseLLMJson(raw) {
-    try { return JSON.parse(raw); } catch (_) {}
+    try { return JSON.parse(raw); } catch (_) { }
     // Try extracting JSON from markdown code fences or surrounding text
     const match = raw.match(/\{[\s\S]*\}/);
     if (match) {
-        try { return JSON.parse(match[0]); } catch (_) {}
+        try { return JSON.parse(match[0]); } catch (_) { }
     }
     throw new Error(`[LLM] Could not parse JSON from response: ${raw.slice(0, 200)}`);
 }
