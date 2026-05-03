@@ -699,31 +699,32 @@ body:has(#floating-btn) { background: transparent; }
   width: 100px;
   height: 100px;
   border-radius: 50%;
-  background: var(--blue-deep);
+  background: #fff;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 4px;
-  box-shadow: 0 0 0 6px rgba(42,111,191,0.18), 0 6px 24px rgba(42,111,191,0.45), 0 2px 8px rgba(0,0,0,0.2);
+  box-shadow: 0 0 0 8px rgba(42,111,191,0.18), 0 14px 32px rgba(20,30,50,0.14), inset 0 0 0 3px #2A6FBF;
   cursor: pointer;
   -webkit-app-region: no-drag;
-  transition: transform 0.15s ease, filter 0.15s ease;
+  transition: transform 0.15s ease, box-shadow 0.28s ease;
 }
-#floating-inner:hover { transform: scale(1.07); filter: brightness(1.1); }
+#floating-inner:hover { transform: scale(1.07); box-shadow: 0 0 0 10px rgba(42,111,191,0.25), 0 14px 32px rgba(20,30,50,0.18), inset 0 0 0 3px #2A6FBF; }
 #floating-inner.floating-listening {
-  background: var(--red-listening);
+  background: #fff;
   transform: scale(1.08);
+  box-shadow: 0 0 0 8px rgba(231,76,60,0.22), 0 14px 32px rgba(20,30,50,0.14), inset 0 0 0 3px #D63B28;
   animation: floatingPulse 1.2s ease-in-out infinite;
 }
 @keyframes floatingPulse {
-  0%, 100% { box-shadow: 0 6px 24px rgba(231,76,60,0.5), 0 0 0 0 rgba(231,76,60,0.4); }
-  50%      { box-shadow: 0 6px 24px rgba(231,76,60,0.5), 0 0 0 12px rgba(231,76,60,0); }
+  0%, 100% { box-shadow: 0 0 0 6px rgba(231,76,60,0.22), 0 14px 32px rgba(20,30,50,0.14), inset 0 0 0 3px #D63B28; }
+  50%      { box-shadow: 0 0 0 12px rgba(231,76,60,0.12), 0 14px 32px rgba(20,30,50,0.14), inset 0 0 0 3px #D63B28; }
 }
 #floating-inner.floating-processing {
-  background: var(--amber-thinking);
+  background: #fff;
   transform: scale(1.04);
-  animation: floatingSpin 0.9s linear infinite;
+  box-shadow: 0 0 0 8px rgba(243,156,18,0.22), 0 14px 32px rgba(20,30,50,0.14), inset 0 0 0 3px #D88B0E;
 }
 @keyframes floatingSpin {
   from { filter: brightness(1); }
@@ -732,15 +733,16 @@ body:has(#floating-btn) { background: transparent; }
 }
 #floating-label {
   font-family: 'Funnel Sans', system-ui, -apple-system, sans-serif;
-  font-size: 18pt;
+  font-size: 14pt;
   font-weight: 700;
-  color: #fff;
+  color: #2A6FBF;
   letter-spacing: 0.02em;
   user-select: none;
 }
 #floating-icon {
   font-size: 30px;
   line-height: 1;
+  color: #2A6FBF;
   user-select: none;
 }
 
