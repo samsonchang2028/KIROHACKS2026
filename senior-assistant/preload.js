@@ -4,6 +4,11 @@
 //
 // All renderer↔main communication flows through window.api. ipcRenderer is never exposed directly
 // so the renderer cannot reach Node APIs it shouldn't have.
+//
+// --- Walkthrough additions (added with team awareness) ---
+// startWalkthrough, cancelWalkthrough, walkthroughEvent, submitWalkthroughInput
+// are deliberate extensions to the frozen contract for walk-me-through-it mode.
+// Existing methods are untouched.
 
 const { contextBridge, ipcRenderer } = require("electron");
 
@@ -34,4 +39,18 @@ contextBridge.exposeInMainWorld("api", {
   onStartVoice:   (cb) => ipcRenderer.on("start-voice",   ()         => cb()),
   onSubmitQuery:  (cb) => ipcRenderer.on("submit-query",  (_e, q)    => cb(q)),
   onSystemCheck:  (cb) => ipcRenderer.on("system-check",  (_e, data) => cb(data)),
+
+  // --- Walkthrough IPC surface ---
+  startWalkthrough: (name) => ipcRenderer.invoke("startWalkthrough", name),
+  cancelWalkthrough: () => ipcRenderer.invoke("cancelWalkthrough"),
+  submitWalkthroughInput: (text) => ipcRenderer.invoke("submitWalkthroughInput", text),
+  walkthroughEvent: (callback) => {
+    // Wraps ipcRenderer.on so the renderer can subscribe to lifecycle events
+    // (step-started, step-completed, walkthrough-finished, walkthrough-cancelled,
+    //  wait-for-input) without direct access to ipcRenderer.
+    ipcRenderer.on("walkthrough-event", (_event, data) => callback(data));
+  },
+
+  // Lets the overlay toggle click-through on/off for interactive regions (cancel button).
+  setIgnoreMouseEvents: (ignore, opts) => ipcRenderer.invoke("setIgnoreMouseEvents", ignore, opts),
 });

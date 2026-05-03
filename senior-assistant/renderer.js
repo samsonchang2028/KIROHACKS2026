@@ -154,7 +154,7 @@ function renderMessage(role, text) {
 // --- Confirmation buttons (injected into mic-area during confirming state) ---
 
 function renderConfirmButtons(question, action) {
-  micArea.innerHTML = "";
+  micArea.replaceChildren();
 
   const yes = document.createElement("button");
   yes.className = "confirm-btn confirm-yes";
@@ -171,7 +171,7 @@ function renderConfirmButtons(question, action) {
 }
 
 function clearConfirmButtons() {
-  micArea.innerHTML = "";
+  micArea.replaceChildren();
 }
 
 // --- Voice button visual state ---
@@ -241,7 +241,13 @@ async function handleUserInput(userText) {
     console.log('[pipeline] agent response:', JSON.stringify(response));
     renderMessage("assistant", response.speak);
 
-    if (response.requiresConfirmation && response.action) {
+    if (response.requiresConfirmation && response.walkthrough) {
+      // Walkthrough confirmation — action field carries the walkthrough name.
+      setMicState(CONFIRMING, {
+        question: response.speak,
+        action: { __walkthrough: response.walkthrough },
+      });
+    } else if (response.requiresConfirmation && response.action) {
       setMicState(CONFIRMING, {
         question: response.speak,
         action: response.action,
@@ -403,7 +409,14 @@ sendBtn.addEventListener("click", submitTextInput);
 
 function submitTextInput() {
   const text = textInput.value.trim();
-  if (!text || currentState !== IDLE) return;
+  if (!text) return;
+  // Route to walkthrough if waiting for senior input (e.g. meeting ID).
+  if (walkthroughInputMode) {
+    textInput.value = "";
+    submitWalkthroughInput(text);
+    return;
+  }
+  if (currentState !== IDLE) return;
   // Stop any in-progress speech when user submits text.
   window.api.stopSpeaking();
   textInput.value = "";
@@ -479,7 +492,12 @@ async function stopListening() {
 // --- Confirm / cancel ---
 
 async function handleConfirm(confirmed, action) {
-  if (confirmed) {
+  if (confirmed && action?.__walkthrough) {
+    // Walkthrough confirmed — start it and minimize chat.
+    setMicState(IDLE);
+    window.api.startWalkthrough(action.__walkthrough);
+    window.api.closeChatWindow();
+  } else if (confirmed) {
     setMicState(DOING);
     await executeAndFinish(action);
   } else {
@@ -513,6 +531,41 @@ async function executeAndFinish(action) {
     window.api.speak("Sorry, I couldn't do that.");
     setMicState(IDLE);
   }
+}
+
+// --- Walkthrough event handling ---
+// Tracks walkthrough progress from the chat side. On wait-for-input, captures
+// voice/text and sends it back. On finish/cancel, returns to idle.
+
+let walkthroughInputMode = false;
+
+window.api.walkthroughEvent((data) => {
+  switch (data.type) {
+    case "wait-for-input":
+      walkthroughInputMode = true;
+      renderMessage("assistant", data.text);
+      window.api.speak(data.text);
+      break;
+    case "walkthrough-finished":
+      walkthroughInputMode = false;
+      renderMessage("assistant", "All done! I'm here if you need anything else.");
+      setMicState(IDLE);
+      break;
+    case "walkthrough-cancelled":
+      walkthroughInputMode = false;
+      renderMessage("assistant", "Okay, stopped.");
+      window.api.speak("Okay, stopped.");
+      setMicState(IDLE);
+      break;
+  }
+});
+
+// Override submit to route input to the walkthrough when waiting for input.
+function submitWalkthroughInput(text) {
+  if (!text) return;
+  renderMessage("user", text);
+  walkthroughInputMode = false;
+  window.api.submitWalkthroughInput(text);
 }
 
 // --- Init ---

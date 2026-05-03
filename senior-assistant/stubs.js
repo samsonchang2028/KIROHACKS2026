@@ -30,7 +30,7 @@ const WHISPER_BIN = path.join(
 );
 const WHISPER_MODEL = path.join(
   __dirname,
-  "node_modules/whisper-node/lib/whisper.cpp/models/ggml-base.bin",
+  "node_modules/whisper-node/lib/whisper.cpp/models/ggml-base.en.bin",
 );
 
 // Check if local whisper.cpp is available — if not, we'll use the cloud API.
@@ -436,6 +436,18 @@ function stopSpeaking() {
 // Return shape is the contract: { speak, action, requiresConfirmation }.
 // action is either null (no system change needed) or { name, params } from the locked 8-action catalog.
 async function getAssistantResponse(text, screenshot) {
+  // Walkthrough trigger — any input mentioning zoom or meeting starts the guided flow.
+  // Person 2: replace this check with real LLM detection when wiring the production pipeline.
+  const lower = (text || "").toLowerCase();
+  if (lower.includes("zoom") || lower.includes("meeting")) {
+    return {
+      speak: "Sure, let me help you join your Zoom meeting.",
+      walkthrough: "zoom-join",
+      action: null,
+      requiresConfirmation: true,
+    };
+  }
+
   return pipeline.handleQuery(text, screenshot);
 }
 
@@ -496,12 +508,17 @@ function findInstalledApp(query) {
 
   const q = query.toLowerCase();
 
+  // Strip uninstallers — they share keywords with the real app and always lose.
+  const usable = shortcuts.filter(
+    (s) => !/(uninstall|setup|update|installer)/i.test(s.name),
+  );
+
   // Exact match first
-  const exact = shortcuts.find((s) => s.name.toLowerCase() === q);
+  const exact = usable.find((s) => s.name.toLowerCase() === q);
   if (exact) return exact.path;
 
   // Contains match
-  const contains = shortcuts.find((s) => s.name.toLowerCase().includes(q));
+  const contains = usable.find((s) => s.name.toLowerCase().includes(q));
   if (contains) return contains.path;
 
   // Fuzzy: query chars appear in order in the shortcut name
@@ -639,6 +656,8 @@ async function _executeActionImpl(action) {
           execSync(`open -a "${appName}"`, { stdio: "ignore", timeout: 5000 });
         } else {
           // Windows app map
+          const appData = process.env.APPDATA || "";
+          const localAppData = process.env.LOCALAPPDATA || "";
           const appMap = {
             chrome: "chrome",
             "google chrome": "chrome",
@@ -661,6 +680,18 @@ async function _executeActionImpl(action) {
             terminal: "wt",
             spotify: "spotify:",
             netflix: "netflix:",
+            // Zoom installs per-user; look for its exe directly so we don't
+            // accidentally match "Zoom Workplace Uninstaller" via Start Menu search.
+            zoom: fs.existsSync(path.join(appData, "Zoom", "bin", "Zoom.exe"))
+              ? path.join(appData, "Zoom", "bin", "Zoom.exe")
+              : fs.existsSync(path.join(localAppData, "Zoom", "bin", "Zoom.exe"))
+              ? path.join(localAppData, "Zoom", "bin", "Zoom.exe")
+              : null,
+            "zoom workplace": fs.existsSync(path.join(appData, "Zoom", "bin", "Zoom.exe"))
+              ? path.join(appData, "Zoom", "bin", "Zoom.exe")
+              : fs.existsSync(path.join(localAppData, "Zoom", "bin", "Zoom.exe"))
+              ? path.join(localAppData, "Zoom", "bin", "Zoom.exe")
+              : null,
           };
 
           if (appMap[name]) {
