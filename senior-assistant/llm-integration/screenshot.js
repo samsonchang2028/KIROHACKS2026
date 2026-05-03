@@ -33,8 +33,13 @@ async function capture() {
             throw new Error('No screen sources returned by desktopCapturer');
         }
 
-        // sources[0] is the primary display
         const buffer = sources[0].thumbnail.toPNG();
+        // Debug: save to temp file so we can verify what was captured
+        const fs = require('fs');
+        const path = require('path');
+        const debugPath = path.join(require('os').tmpdir(), 'helper-debug-screenshot.png');
+        fs.writeFileSync(debugPath, buffer);
+        console.log('[screenshot] saved debug screenshot to:', debugPath, 'size:', buffer.length);
         return buffer.toString('base64');
     } catch (err) {
         console.error('[LLM ERROR] screenshot:', err);

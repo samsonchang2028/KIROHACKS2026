@@ -215,6 +215,7 @@ async function handleQuery(userMessage) {
 
         // Step 3: Validate action against allowlist — never trust LLM output
         const rawAction = parsed.action;
+        console.log('[pipeline] final parsed action:', rawAction, 'reply:', parsed.reply?.substring(0, 80), 'cameFromVision:', cameFromVision);
         const validatedAction = validateAction(rawAction);
 
         if (validatedAction !== rawAction) {
