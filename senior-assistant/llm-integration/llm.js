@@ -163,7 +163,7 @@ async function visionQuery(userMessage, screenshotBase64, history = []) {
     ];
 
     const body = {
-        model: 'openai/gpt-4o-mini',
+        model: 'openai/gpt-4o',
         messages,
         ...SHARED_OPTIONS,
     };
