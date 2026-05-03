@@ -189,14 +189,20 @@ async function handleQuery(userMessage) {
             let base64 = null;
             try {
                 base64 = await screenshot.capture();
+                console.log('[pipeline] screenshot captured, length:', base64?.length);
             } catch (screenshotErr) {
-                console.error('[LLM ERROR] screenshot capture failed, proceeding without screenshot:', screenshotErr.message);
+                console.error('[LLM ERROR] screenshot capture failed:', screenshotErr.message);
             }
 
             if (base64) {
-                parsed = await llm.visionQuery(userMessage, base64, conversationHistory.slice(0, -1));
+                try {
+                    parsed = await llm.visionQuery(userMessage, base64, conversationHistory.slice(0, -1));
+                    console.log('[pipeline] vision result:', JSON.stringify(parsed));
+                } catch (visionErr) {
+                    console.error('[LLM ERROR] vision query failed:', visionErr.message);
+                    parsed = { action: 'clarify', params: null, reply: "I saw your screen but had trouble analyzing it. Can you describe what looks suspicious?" };
+                }
             } else {
-                // Screenshot failed — ask user to describe what they see
                 parsed = { action: 'clarify', params: null, reply: "I couldn't see your screen. Can you describe what you're looking at?" };
             }
         }
