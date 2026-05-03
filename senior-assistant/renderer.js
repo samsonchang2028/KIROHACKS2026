@@ -290,6 +290,7 @@ async function showSuggestions(suggestions) {
           () => executeAndFinish({ name: "_killProcesses", params: { pids: allPids } }),
           `I found ${procs.length} apps using a lot of memory. Want me to close them?`
         );
+        return;
       }
     } catch (err) {
       console.error("[suggestions] getHeavyProcesses failed:", err.message);
