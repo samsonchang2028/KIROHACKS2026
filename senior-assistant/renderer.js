@@ -27,6 +27,58 @@ let mediaRecorder = null;
 let audioChunks = [];
 let micStream = null;
 
+// --- Silence detection (auto-stop) ---
+let audioContext = null;
+let analyser = null;
+let silenceTimer = null;
+const SILENCE_THRESHOLD = 40;   // average frequency level below this = silence (0-255 scale)
+const SILENCE_DURATION = 1500;  // ms of silence before auto-stop
+const MIN_RECORD_TIME = 800;    // don't auto-stop in the first 800ms
+let recordingStartTime = 0;
+let silenceDetectionActive = false;
+
+function startSilenceDetection() {
+  if (!micStream) return;
+  silenceDetectionActive = true;
+  audioContext = new AudioContext();
+  const source = audioContext.createMediaStreamSource(micStream);
+  analyser = audioContext.createAnalyser();
+  analyser.fftSize = 512;
+  analyser.smoothingTimeConstant = 0.3;
+  source.connect(analyser);
+
+  const data = new Uint8Array(analyser.frequencyBinCount);
+  let silenceStart = null;
+
+  function check() {
+    if (!silenceDetectionActive) return;
+    analyser.getByteFrequencyData(data);
+    let sum = 0;
+    for (let i = 0; i < data.length; i++) sum += data[i];
+    const avg = sum / data.length;
+
+    if (avg < SILENCE_THRESHOLD) {
+      if (!silenceStart) silenceStart = Date.now();
+      else if (Date.now() - silenceStart > SILENCE_DURATION && Date.now() - recordingStartTime > MIN_RECORD_TIME) {
+        console.log("[VAD] Silence detected, auto-stopping");
+        silenceDetectionActive = false;
+        stopListening();
+        return;
+      }
+    } else {
+      silenceStart = null;
+    }
+    silenceTimer = requestAnimationFrame(check);
+  }
+  check();
+}
+
+function stopSilenceDetection() {
+  silenceDetectionActive = false;
+  if (silenceTimer) { cancelAnimationFrame(silenceTimer); silenceTimer = null; }
+  if (audioContext) { audioContext.close().catch(() => {}); audioContext = null; }
+}
+
 async function initMic() {
   try {
     micStream = await navigator.mediaDevices.getUserMedia({
@@ -252,10 +304,16 @@ async function startListening() {
   // Stop any in-progress speech when user starts talking.
   window.api.stopSpeaking();
   startRecording();
+  recordingStartTime = Date.now();
+  startSilenceDetection();
   setMicState(LISTENING);
 }
 
+let _stopListeningLock = false;
 async function stopListening() {
+  if (_stopListeningLock || currentState !== LISTENING) return;
+  _stopListeningLock = true;
+  stopSilenceDetection();
   setMicState(THINKING);
 
   const audioBuffer = await stopRecording();
@@ -264,6 +322,7 @@ async function stopListening() {
     renderMessage("assistant", "I didn't hear anything. Could you try again?");
     window.api.speak("I didn't hear anything. Could you try again?");
     setMicState(IDLE);
+    _stopListeningLock = false;
     return;
   }
 
@@ -276,6 +335,7 @@ async function stopListening() {
       );
       window.api.speak("I didn't catch that. Could you say it again?");
       setMicState(IDLE);
+      _stopListeningLock = false;
       return;
     }
     await handleUserInput(userText);
@@ -287,6 +347,7 @@ async function stopListening() {
     window.api.speak("Sorry, something went wrong.");
     setMicState(IDLE);
   }
+  _stopListeningLock = false;
 }
 
 // --- Confirm / cancel ---
