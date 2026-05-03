@@ -171,6 +171,16 @@ app.whenReady().then(() => {
     }
   });
 
+  // Ctrl+Shift+R — trigger reboot suggestion only (for demo)
+  globalShortcut.register("CommandOrControl+Shift+R", () => {
+    showChatWindow();
+    const { checkUptime } = require("./system-monitor");
+    const up = checkUptime();
+    if (chatWindow && up) {
+      chatWindow.webContents.send("system-check", [up]);
+    }
+  });
+
   app.on("activate", () => {
     if (!floatingWindow) createFloatingWindow();
   });
