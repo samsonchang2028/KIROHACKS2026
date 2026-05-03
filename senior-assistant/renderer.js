@@ -76,7 +76,7 @@ function startSilenceDetection() {
 function stopSilenceDetection() {
   silenceDetectionActive = false;
   if (silenceTimer) { cancelAnimationFrame(silenceTimer); silenceTimer = null; }
-  if (audioContext) { audioContext.close().catch(() => {}); audioContext = null; }
+  if (audioContext) { audioContext.close().catch(() => { }); audioContext = null; }
 }
 
 async function initMic() {
@@ -154,7 +154,7 @@ function renderMessage(role, text) {
 // --- Confirmation buttons (injected into mic-area during confirming state) ---
 
 function renderConfirmButtons(question, action) {
-  micArea.innerHTML = "";
+  micArea.replaceChildren();
 
   const yes = document.createElement("button");
   yes.className = "confirm-btn confirm-yes";
@@ -171,7 +171,7 @@ function renderConfirmButtons(question, action) {
 }
 
 function clearConfirmButtons() {
-  micArea.innerHTML = "";
+  micArea.replaceChildren();
 }
 
 // --- Voice button visual state ---
@@ -241,7 +241,13 @@ async function handleUserInput(userText) {
     console.log('[pipeline] agent response:', JSON.stringify(response));
     renderMessage("assistant", response.speak);
 
-    if (response.requiresConfirmation && response.action) {
+    if (response.requiresConfirmation && response.walkthrough) {
+      // Walkthrough confirmation — action field carries the walkthrough name.
+      setMicState(CONFIRMING, {
+        question: response.speak,
+        action: { __walkthrough: response.walkthrough },
+      });
+    } else if (response.requiresConfirmation && response.action) {
       setMicState(CONFIRMING, {
         question: response.speak,
         action: response.action,
@@ -273,9 +279,10 @@ async function handleUserInput(userText) {
 
 async function showSuggestions(suggestions) {
   const memSuggestion = suggestions.find(s => s.includes("memory"));
+  const cpuSuggestion = suggestions.find(s => s.includes("processor") || s.includes("busy"));
   const rebootSuggestion = suggestions.find(s => s.includes("been on for"));
 
-  // Memory: offer to close heavy apps
+  // Memory: offer to close heavy apps, then offer restart
   if (memSuggestion) {
     try {
       const procs = await window.api.getHeavyProcesses();
@@ -295,22 +302,52 @@ async function showSuggestions(suggestions) {
     } catch (err) {
       console.error("[suggestions] getHeavyProcesses failed:", err.message);
     }
-  }
-
-  // Reboot: just recommend it, don't offer to do it
-  if (rebootSuggestion) {
-    renderMessage("assistant", rebootSuggestion + " Try restarting your computer when you get a chance — it only takes a minute and can make a big difference.");
-    window.api.speak("Your computer has been on a while. Try restarting it when you get a chance.");
-    setMicState(IDLE);
+    // No heavy processes found — fall through to restart offer
+    offerRestart(memSuggestion);
     return;
   }
 
-  if (!memSuggestion) {
+  // CPU high load: offer to close apps and restart
+  if (cpuSuggestion) {
+    offerRestart(cpuSuggestion);
+    return;
+  }
+
+  // Reboot: offer restart with Yes/No
+  if (rebootSuggestion) {
+    offerRestart(rebootSuggestion);
+    return;
+  }
+
+  if (!memSuggestion && !cpuSuggestion) {
     for (const s of suggestions) {
       renderMessage("assistant", s);
     }
     setMicState(IDLE);
   }
+}
+
+/**
+ * Renders a restart offer in the chat with Yes/No buttons.
+ * Called when high memory, high CPU, or long uptime is detected.
+ */
+function offerRestart(contextMessage) {
+  const fullMessage = contextMessage
+    + "\n\nIf things are still slow, I can restart your computer for you. It only takes a minute and usually helps a lot.\n\nDo you want me to restart it?";
+
+  renderInlineConfirm(
+    fullMessage,
+    "Yes, restart",
+    "No, not now",
+    async () => {
+      renderMessage("assistant", "Restarting now… See you in a moment!");
+      window.api.speak("Restarting now. See you in a moment!");
+      // Short delay so the user can read the message before the screen goes dark
+      await new Promise(resolve => setTimeout(resolve, 5000));
+      await window.api.reboot();
+    },
+    "Your computer is under heavy load. Would you like me to restart it?"
+  );
 }
 
 function renderInlineConfirm(text, yesLabel, noLabel, onYes, speakText) {
@@ -372,7 +409,14 @@ sendBtn.addEventListener("click", submitTextInput);
 
 function submitTextInput() {
   const text = textInput.value.trim();
-  if (!text || currentState !== IDLE) return;
+  if (!text) return;
+  // Route to walkthrough if waiting for senior input (e.g. meeting ID).
+  if (walkthroughInputMode) {
+    textInput.value = "";
+    submitWalkthroughInput(text);
+    return;
+  }
+  if (currentState !== IDLE) return;
   // Stop any in-progress speech when user submits text.
   window.api.stopSpeaking();
   textInput.value = "";
@@ -448,7 +492,12 @@ async function stopListening() {
 // --- Confirm / cancel ---
 
 async function handleConfirm(confirmed, action) {
-  if (confirmed) {
+  if (confirmed && action?.__walkthrough) {
+    // Walkthrough confirmed — start it and minimize chat.
+    setMicState(IDLE);
+    window.api.startWalkthrough(action.__walkthrough);
+    window.api.closeChatWindow();
+  } else if (confirmed) {
     setMicState(DOING);
     await executeAndFinish(action);
   } else {
