@@ -190,12 +190,15 @@ async function handleQuery(userMessage) {
             try {
                 base64 = await screenshot.capture();
             } catch (screenshotErr) {
-                // Screenshot failure is non-fatal — proceed without it
                 console.error('[LLM ERROR] screenshot capture failed, proceeding without screenshot:', screenshotErr.message);
             }
 
-            // Call vision query (with or without screenshot — if null, pass empty string)
-            parsed = await llm.visionQuery(userMessage, base64 || '', conversationHistory.slice(0, -1));
+            if (base64) {
+                parsed = await llm.visionQuery(userMessage, base64, conversationHistory.slice(0, -1));
+            } else {
+                // Screenshot failed — ask user to describe what they see
+                parsed = { action: 'clarify', params: null, reply: "I couldn't see your screen. Can you describe what you're looking at?" };
+            }
         }
 
         // Step 3: Validate action against allowlist — never trust LLM output
