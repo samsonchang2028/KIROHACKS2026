@@ -30,7 +30,7 @@ const WHISPER_BIN = path.join(
 );
 const WHISPER_MODEL = path.join(
   __dirname,
-  "node_modules/whisper-node/lib/whisper.cpp/models/ggml-base.en.bin",
+  "node_modules/whisper-node/lib/whisper.cpp/models/ggml-base.bin",
 );
 
 // Check if local whisper.cpp is available — if not, we'll use the cloud API.
@@ -63,10 +63,10 @@ const FILLER_WORDS = [
 // Longer phrases listed first so "you know" matches before "you".
 const _FILLER_RE = new RegExp(
   "\\b(?:" +
-  FILLER_WORDS.map((f) => f.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join(
-    "|",
-  ) +
-  ")\\b",
+    FILLER_WORDS.map((f) => f.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join(
+      "|",
+    ) +
+    ")\\b",
   "gi",
 );
 
@@ -370,9 +370,10 @@ function _speakWithEdgeTts(text) {
   // Spawn a shell that generates then plays the audio.
   const separator = platform === "win32" ? "&" : "&&";
   const terminator = platform === "win32" ? "&" : ";";
-  const shellCmd = `"${_edgeTtsCmd}" --text "${text.replace(/"/g, '\\"')}" --voice ${EDGE_TTS_VOICE} --write-media "${tmpMp3}" 2>NUL ${separator} ${playCmd}${terminator} ${cleanupCmd}`;
+  const devnull = platform === "win32" ? "NUL" : "/dev/null";
+  const shellCmd = `"${_edgeTtsCmd}" --text "${text.replace(/"/g, '\\"')}" --voice ${EDGE_TTS_VOICE} --write-media "${tmpMp3}" 2>${devnull} ${separator} ${playCmd}${terminator} ${cleanupCmd}`;
 
-  _ttsProcess = spawn(shellBin, [shellArg, shellCmd]);
+  _ttsProcess = spawn(shellBin, [shellArg, shellCmd], { stdio: "ignore" });
 
   _ttsProcess.on("error", (err) => {
     console.error(
@@ -396,7 +397,7 @@ function _speakWithNativeTts(text) {
   const platform = process.platform;
 
   if (platform === "darwin") {
-    _ttsProcess = spawn("say", ["-r", "175", text]);
+    _ttsProcess = spawn("say", ["-r", "175", text], { stdio: "ignore" });
   } else if (platform === "win32") {
     const psScript = `
       Add-Type -AssemblyName System.Speech;
@@ -404,9 +405,9 @@ function _speakWithNativeTts(text) {
       $synth.Rate = -2;
       $synth.Speak('${text.replace(/'/g, "''")}');
     `;
-    _ttsProcess = spawn("powershell", ["-NoProfile", "-Command", psScript]);
+    _ttsProcess = spawn("powershell", ["-NoProfile", "-Command", psScript], { stdio: "ignore" });
   } else {
-    _ttsProcess = spawn("espeak", ["-s", "140", text]);
+    _ttsProcess = spawn("espeak", ["-s", "140", text], { stdio: "ignore" });
   }
 
   _ttsProcess.on("error", (err) => {
@@ -447,7 +448,15 @@ const NIRCMD = path.join(__dirname, "nircmd.exe");
 
 function findInstalledApp(query) {
   const searchDirs = [
-    path.join(os.homedir(), "AppData", "Roaming", "Microsoft", "Windows", "Start Menu", "Programs"),
+    path.join(
+      os.homedir(),
+      "AppData",
+      "Roaming",
+      "Microsoft",
+      "Windows",
+      "Start Menu",
+      "Programs",
+    ),
     "C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs",
   ];
 
@@ -464,7 +473,9 @@ function findInstalledApp(query) {
           shortcuts.push({ name: entry.name.replace(".lnk", ""), path: full });
         }
       }
-    } catch (_) { /* skip inaccessible dirs */ }
+    } catch (_) {
+      /* skip inaccessible dirs */
+    }
   }
 
   for (const dir of searchDirs) walk(dir);
@@ -472,27 +483,29 @@ function findInstalledApp(query) {
   // Also search for Microsoft Store / UWP apps via PowerShell
   try {
     const psCmd = `powershell -NoProfile -Command "Get-StartApps | Where-Object { $_.Name -like '*${query.replace(/'/g, "''")}*' } | Select-Object -First 1 -ExpandProperty AppID"`;
-    const appId = execSync(psCmd, { encoding: 'utf8', timeout: 5000 }).trim();
+    const appId = execSync(psCmd, { encoding: "utf8", timeout: 5000 }).trim();
     if (appId) {
       console.log(`[ACTION] Found UWP app: "${appId}" for query "${query}"`);
       return `shell:AppsFolder\\${appId}`;
     }
-  } catch (_) { /* Get-StartApps not available or no match */ }
+  } catch (_) {
+    /* Get-StartApps not available or no match */
+  }
 
   if (shortcuts.length === 0) return null;
 
   const q = query.toLowerCase();
 
   // Exact match first
-  const exact = shortcuts.find(s => s.name.toLowerCase() === q);
+  const exact = shortcuts.find((s) => s.name.toLowerCase() === q);
   if (exact) return exact.path;
 
   // Contains match
-  const contains = shortcuts.find(s => s.name.toLowerCase().includes(q));
+  const contains = shortcuts.find((s) => s.name.toLowerCase().includes(q));
   if (contains) return contains.path;
 
   // Fuzzy: query chars appear in order in the shortcut name
-  const fuzzy = shortcuts.find(s => {
+  const fuzzy = shortcuts.find((s) => {
     const sLower = s.name.toLowerCase();
     let qi = 0;
     for (let si = 0; si < sLower.length && qi < q.length; si++) {
@@ -505,119 +518,221 @@ function findInstalledApp(query) {
   return null;
 }
 
-
 async function executeAction(action) {
   if (!action || !action.name) return { success: false };
 
   console.log("[ACTION]", action);
+  const platform = process.platform;
 
   try {
     switch (action.name) {
       case "setVolume": {
-        // NirCmd setvolume: 0 = master, value range 0–65535
         const rawLevel =
           typeof action.params === "number"
             ? action.params
             : (action.params?.level ?? 0);
-        const level = Math.round((rawLevel / 100) * 65535);
-        const cmd = `"${NIRCMD}" setvolume 0 ${level} ${level}`;
-        console.log("[ACTION] running:", cmd);
-        const output = execSync(cmd, { encoding: "utf8", stdio: "pipe" });
-        console.log(
-          "[ACTION] nircmd output:",
-          output || "(no output — success)",
-        );
+
+        if (platform === "darwin") {
+          const vol = Math.max(0, Math.min(100, Math.round(rawLevel)));
+          execSync(`osascript -e "set volume output volume ${vol}"`, {
+            stdio: "ignore",
+          });
+        } else {
+          const level = Math.round((rawLevel / 100) * 65535);
+          const cmd = `"${NIRCMD}" setvolume 0 ${level} ${level}`;
+          console.log("[ACTION] running:", cmd);
+          const output = execSync(cmd, { encoding: "utf8", stdio: "pipe" });
+          console.log(
+            "[ACTION] nircmd output:",
+            output || "(no output — success)",
+          );
+        }
         break;
       }
       case "setBrightness": {
-        // NirCmd setbrightness: 0–100
         const rawBrightness =
           typeof action.params === "number"
             ? action.params
             : (action.params?.level ?? 50);
-        execSync(`"${NIRCMD}" setbrightness ${rawBrightness}`);
+
+        if (platform === "darwin") {
+          console.log(
+            `[ACTION] setBrightness(${rawBrightness}) — not supported on macOS (demo is Windows)`,
+          );
+        } else {
+          execSync(`"${NIRCMD}" setbrightness ${rawBrightness}`, {
+            stdio: "ignore",
+          });
+        }
         break;
       }
       case "setTextSize": {
-        // Windows display scaling via registry + rundll32 refresh
         const scale = action.params?.scale ?? 150;
-        // DPI values: 100%=96, 125%=120, 150%=144, 175%=168, 200%=192
-        const dpiMap = { 100: 96, 125: 120, 150: 144, 175: 168, 200: 192 };
-        const dpi = dpiMap[scale] ?? 144;
-        execSync(
-          `reg add "HKCU\\Control Panel\\Desktop" /v LogPixels /t REG_DWORD /d ${dpi} /f && ` +
-            `rundll32.exe user32.dll,UpdatePerUserSystemParameters`,
-        );
+
+        if (platform === "darwin") {
+          // macOS: can't set display scaling programmatically. Open the settings pane.
+          try {
+            execSync(
+              `osascript -e 'tell application "System Settings" to activate'`,
+              { stdio: "ignore", timeout: 3000 },
+            );
+          } catch (_) {
+            /* ignore */
+          }
+          console.log(
+            `[ACTION] setTextSize(${scale}) — opened System Settings (macOS can't set scale directly)`,
+          );
+        } else {
+          const dpiMap = { 100: 96, 125: 120, 150: 144, 175: 168, 200: 192 };
+          const dpi = dpiMap[scale] ?? 144;
+          execSync(
+            `reg add "HKCU\\Control Panel\\Desktop" /v LogPixels /t REG_DWORD /d ${dpi} /f && ` +
+              `rundll32.exe user32.dll,UpdatePerUserSystemParameters`,
+          );
+        }
         break;
       }
       case "openApp": {
-        // Handle both { name: 'chrome' } and bare string 'chrome'
-        const rawName = typeof action.params === 'string'
-          ? action.params
-          : (action.params?.name ?? "");
+        const rawName =
+          typeof action.params === "string"
+            ? action.params
+            : (action.params?.name ?? "");
         const name = rawName.toLowerCase().trim();
 
         if (!name) {
           return { success: false, error: "No app name provided" };
         }
 
-        // Map common names to executables
-        const appMap = {
-          chrome: "chrome", "google chrome": "chrome",
-          firefox: "firefox",
-          edge: "msedge", "microsoft edge": "msedge",
-          notepad: "notepad",
-          calculator: "calc", calc: "calc",
-          paint: "mspaint",
-          word: "winword", excel: "excel", powerpoint: "powerpnt", outlook: "outlook",
-          "file explorer": "explorer", explorer: "explorer",
-          settings: "ms-settings:",
-          "task manager": "taskmgr",
-          cmd: "cmd", terminal: "wt",
-          // UWP / Store apps use shell:AppsFolder launch
-          spotify: "spotify:",
-          netflix: "netflix:",
-        };
+        if (platform === "darwin") {
+          // macOS app name map — friendly names to actual .app names
+          const macAppMap = {
+            chrome: "Google Chrome",
+            "google chrome": "Google Chrome",
+            firefox: "Firefox",
+            safari: "Safari",
+            calculator: "Calculator",
+            calc: "Calculator",
+            notes: "Notes",
+            notepad: "Notes",
+            "text edit": "TextEdit",
+            textedit: "TextEdit",
+            terminal: "Terminal",
+            settings: "System Settings",
+            "system settings": "System Settings",
+            mail: "Mail",
+            email: "Mail",
+            outlook: "Microsoft Outlook",
+            word: "Microsoft Word",
+            excel: "Microsoft Excel",
+            powerpoint: "Microsoft PowerPoint",
+            spotify: "Spotify",
+            finder: "Finder",
+            "file explorer": "Finder",
+            explorer: "Finder",
+            messages: "Messages",
+            photos: "Photos",
+            music: "Music",
+          };
 
-        // Try known app map first
-        if (appMap[name]) {
-          try {
-            console.log(`[ACTION] openApp: "${name}" -> "${appMap[name]}" (known app)`);
-            execSync(`start "" "${appMap[name]}"`, { shell: true, timeout: 5000 });
-            break;
-          } catch (_) {
-            console.log(`[ACTION] known app "${appMap[name]}" failed, trying Start Menu search...`);
+          const appName = macAppMap[name] || rawName;
+          console.log(`[ACTION] openApp: "${name}" -> "${appName}" (macOS)`);
+          execSync(`open -a "${appName}"`, { stdio: "ignore", timeout: 5000 });
+        } else {
+          // Windows app map
+          const appMap = {
+            chrome: "chrome",
+            "google chrome": "chrome",
+            firefox: "firefox",
+            edge: "msedge",
+            "microsoft edge": "msedge",
+            notepad: "notepad",
+            calculator: "calc",
+            calc: "calc",
+            paint: "mspaint",
+            word: "winword",
+            excel: "excel",
+            powerpoint: "powerpnt",
+            outlook: "outlook",
+            "file explorer": "explorer",
+            explorer: "explorer",
+            settings: "ms-settings:",
+            "task manager": "taskmgr",
+            cmd: "cmd",
+            terminal: "wt",
+            spotify: "spotify:",
+            netflix: "netflix:",
+          };
+
+          if (appMap[name]) {
+            try {
+              console.log(
+                `[ACTION] openApp: "${name}" -> "${appMap[name]}" (known app)`,
+              );
+              execSync(`start "" "${appMap[name]}"`, {
+                shell: true,
+                timeout: 5000,
+              });
+              break;
+            } catch (_) {
+              console.log(
+                `[ACTION] known app "${appMap[name]}" failed, trying Start Menu search...`,
+              );
+            }
+          }
+
+          const match = findInstalledApp(name);
+          if (match) {
+            console.log(
+              `[ACTION] openApp: "${name}" -> "${match}" (Start Menu)`,
+            );
+            execSync(`start "" "${match}"`, { shell: true, timeout: 5000 });
+          } else {
+            console.log(`[ACTION] openApp: "${name}" -> trying raw name`);
+            execSync(`start "" "${name}"`, { shell: true, timeout: 5000 });
           }
         }
-
-        // Search Start Menu for installed apps
-        const match = findInstalledApp(name);
-        if (match) {
-          console.log(`[ACTION] openApp: "${name}" -> "${match}" (Start Menu)`);
-          execSync(`start "" "${match}"`, { shell: true, timeout: 5000 });
+        break;
+      }
+      case "openWebsite": {
+        const url = action.params?.url || "";
+        if (!url) return { success: false, error: "No URL provided" };
+        console.log(`[ACTION] openWebsite: "${url}"`);
+        if (platform === "darwin") {
+          execSync(`open "${url}"`, { stdio: "ignore", timeout: 5000 });
         } else {
-          // Last resort — try the raw name
-          console.log(`[ACTION] openApp: "${name}" -> trying raw name`);
-          execSync(`start "" "${name}"`, { shell: true, timeout: 5000 });
+          execSync(`start "" "${url}"`, { shell: true, timeout: 5000 });
         }
         break;
       }
       case "closeActiveWindow": {
-        // Use Alt+F4 via NirCmd to close the foreground window
-        // First send our window to back so the target window is in front
-        execSync(`"${NIRCMD}" win hide title "senior-assistant""`);
-        await new Promise(r => setTimeout(r, 500));
-        execSync(`"${NIRCMD}" sendkeypress 0x73+alt`); // Alt+F4
-        await new Promise(r => setTimeout(r, 300));
-        execSync(`"${NIRCMD}" win show title "senior-assistant""`);
+        if (platform === "darwin") {
+          // Close the frontmost window of the active app (no accessibility permission needed).
+          execSync(
+            `osascript -e 'tell application (path to frontmost application as text) to close the front window'`,
+            { stdio: "ignore", timeout: 10000 },
+          );
+        } else {
+          execSync(`"${NIRCMD}" win hide title "senior-assistant""`);
+          await new Promise((r) => setTimeout(r, 500));
+          execSync(`"${NIRCMD}" sendkeypress 0x73+alt`);
+          await new Promise((r) => setTimeout(r, 300));
+          execSync(`"${NIRCMD}" win show title "senior-assistant""`);
+        }
         break;
       }
       case "closeScamPopup": {
-        execSync(`"${NIRCMD}" win hide title "senior-assistant""`);
-        await new Promise(r => setTimeout(r, 500));
-        execSync(`"${NIRCMD}" sendkeypress 0x73+alt`); // Alt+F4
-        await new Promise(r => setTimeout(r, 300));
-        execSync(`"${NIRCMD}" win show title "senior-assistant""`);
+        if (platform === "darwin") {
+          execSync(
+            `osascript -e 'tell application (path to frontmost application as text) to close the front window'`,
+            { stdio: "ignore", timeout: 10000 },
+          );
+        } else {
+          execSync(`"${NIRCMD}" win hide title "senior-assistant""`);
+          await new Promise((r) => setTimeout(r, 500));
+          execSync(`"${NIRCMD}" sendkeypress 0x73+alt`);
+          await new Promise((r) => setTimeout(r, 300));
+          execSync(`"${NIRCMD}" win show title "senior-assistant""`);
+        }
         break;
       }
       case "readScreenAloud":

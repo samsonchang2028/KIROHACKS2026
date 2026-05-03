@@ -63,7 +63,10 @@ function createChatWindow() {
     height: CHAT.height,
     x: Math.round((width - CHAT.width) / 2),
     y: Math.round((height - CHAT.height) / 2),
-    show: false, // shown only on ready-to-show to avoid white flash and hit 200ms target
+    show: false,
+    frame: false,
+    transparent: true,
+    resizable: false,
     webPreferences,
   });
 
@@ -94,6 +97,15 @@ function hideChatWindow() {
 
 ipcMain.handle("openChatWindow", () => showChatWindow());
 ipcMain.handle("closeChatWindow", () => hideChatWindow());
+
+// --- IPC: title bar window controls ---
+
+ipcMain.handle("win-minimize", () => { if (chatWindow) chatWindow.minimize(); });
+ipcMain.handle("win-maximize", () => {
+  if (!chatWindow) return;
+  chatWindow.isMaximized() ? chatWindow.unmaximize() : chatWindow.maximize();
+});
+ipcMain.handle("win-close", () => { if (chatWindow) chatWindow.hide(); });
 
 // --- IPC: stub pass-throughs (teammates replace stub bodies, not these handlers) ---
 

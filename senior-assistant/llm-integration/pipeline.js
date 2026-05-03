@@ -15,6 +15,7 @@ const ALLOWED_ACTIONS = [
     'setBrightness',
     'setVolume',
     'openApp',
+    'openWebsite',
     'closeActiveWindow',
     'closeScamPopup',
     'readScreenAloud',
@@ -30,6 +31,7 @@ const ALLOWED_ACTIONS = [
 const REQUIRES_CONFIRMATION = new Set([
     'setTextSize',
     'openApp',
+    'openWebsite',
     'closeActiveWindow',
     'closeScamPopup',
     'sendHelpToFamily',
