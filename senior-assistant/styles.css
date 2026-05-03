@@ -489,6 +489,31 @@ body.window-opening {
   filter: brightness(1.1);
 }
 
+/* Long-press listening state */
+#floating-inner.floating-listening {
+  background: var(--listening);
+  transform: scale(1.08);
+  animation: floatingPulse 1.2s ease-in-out infinite;
+}
+
+@keyframes floatingPulse {
+  0%, 100% { box-shadow: 0 6px 24px rgba(231, 76, 60, 0.5), 0 0 0 0 rgba(231, 76, 60, 0.4); }
+  50%       { box-shadow: 0 6px 24px rgba(231, 76, 60, 0.5), 0 0 0 12px rgba(231, 76, 60, 0); }
+}
+
+/* Processing state after release */
+#floating-inner.floating-processing {
+  background: var(--thinking);
+  transform: scale(1.04);
+  animation: floatingSpin 0.9s linear infinite;
+}
+
+@keyframes floatingSpin {
+  from { filter: brightness(1); }
+  50%  { filter: brightness(1.15); }
+  to   { filter: brightness(1); }
+}
+
 #floating-label {
   font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
   font-size: 18pt;

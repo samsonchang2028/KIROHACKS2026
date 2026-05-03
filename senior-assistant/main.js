@@ -25,6 +25,7 @@ const webPreferences = {
 
 let floatingWindow = null;
 let chatWindow = null;
+let toastWindow = null;
 
 // --- Window factories ---
 
@@ -73,8 +74,8 @@ function createChatWindow() {
 
   chatWindow.loadFile("renderer.html");
 
-  // Show only when content is ready — this is what keeps click→visible under 200ms.
-  chatWindow.once("ready-to-show", () => chatWindow.show());
+  // Show only when explicitly requested via showChatWindow()
+  chatWindow.once("ready-to-show", () => {});
 
   // Hide instead of destroy so the next open is instant (no re-parse of renderer.html).
   chatWindow.on("close", (event) => {
@@ -86,7 +87,7 @@ function createChatWindow() {
 // --- Show/hide helpers (shared by IPC handler and global shortcut) ---
 
 function showChatWindow() {
-  if (!chatWindow) { createChatWindow(); }
+  if (!chatWindow) { createChatWindow(); chatWindow.show(); }
   else { chatWindow.show(); }
 }
 
@@ -94,10 +95,103 @@ function hideChatWindow() {
   if (chatWindow) { chatWindow.hide(); }
 }
 
+function showToast(message, suggestions) {
+  if (toastWindow) { toastWindow.close(); toastWindow = null; }
+
+  const { width, height } = screen.getPrimaryDisplay().workAreaSize;
+  const toastW = 300, toastH = 60;
+
+  toastWindow = new BrowserWindow({
+    width: toastW,
+    height: toastH,
+    x: width - toastW - FLOATING.margin,
+    y: height - FLOATING.height - FLOATING.margin - toastH - 10,
+    frame: false,
+    transparent: true,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    resizable: false,
+    focusable: false,
+    webPreferences: {
+      preload: path.join(__dirname, "preload.js"),
+      contextIsolation: false,
+      nodeIntegration: true,
+    },
+  });
+
+  toastWindow.setAlwaysOnTop(true, "screen-saver");
+  toastWindow.loadFile("toast.html");
+
+  toastWindow.webContents.once("did-finish-load", () => {
+    toastWindow.webContents.send("show-toast", message);
+  });
+
+  // Click Fix kills heavy processes directly
+  ipcMain.handleOnce("toast-clicked", async () => {
+    const procs = getHeavyProcesses();
+    const allPids = procs.flatMap(p => p.pids || [p.pid]);
+    const killed = killProcesses(allPids);
+    if (toastWindow) { toastWindow.close(); toastWindow = null; }
+    // Show a brief "done" toast
+    showToast(`Closed ${killed} app${killed !== 1 ? 's' : ''} to free up memory`, []);
+  });
+
+  // Auto-dismiss after 8 seconds
+  setTimeout(() => {
+    if (toastWindow) { toastWindow.close(); toastWindow = null; }
+  }, 8000);
+}
+
 // --- IPC: window management ---
 
 ipcMain.handle("openChatWindow", () => showChatWindow());
 ipcMain.handle("closeChatWindow", () => hideChatWindow());
+
+// Opens chat window and sends a start-voice signal so renderer auto-starts listening.
+ipcMain.handle("openChatWindowVoice", () => {
+  showChatWindow();
+  // Wait for the window to be visible before sending the signal.
+  // ready-to-show fires on first load; subsequent shows are instant so we use a short delay.
+  const sendVoice = () => {
+    if (chatWindow && !chatWindow.isDestroyed()) {
+      chatWindow.webContents.send("start-voice");
+    }
+  };
+  if (chatWindow && chatWindow.isVisible()) {
+    setTimeout(sendVoice, 80); // already loaded — small delay for render cycle
+  } else {
+    chatWindow.once("ready-to-show", () => setTimeout(sendVoice, 80));
+  }
+});
+
+// Temporarily makes the floating window focusable so getUserMedia works for mic recording.
+// Restored to non-focusable after a short delay so it doesn't steal focus from other apps.
+ipcMain.handle("requestMicFocus", () => {
+  if (!floatingWindow) return;
+  floatingWindow.setFocusable(true);
+  floatingWindow.focus();
+  // Restore after recording window — 10s is generous for any hold duration
+  setTimeout(() => {
+    if (floatingWindow && !floatingWindow.isDestroyed()) {
+      floatingWindow.setFocusable(false);
+    }
+  }, 10000);
+});
+
+// Opens chat window and sends a pre-filled query to be submitted automatically.
+ipcMain.handle("openChatWindowWithQuery", (_e, query) => {
+  showChatWindow();
+  const sendQuery = () => {
+    if (chatWindow && !chatWindow.isDestroyed()) {
+      chatWindow.webContents.send("submit-query", query);
+    }
+  };
+  if (chatWindow && chatWindow.isVisible()) {
+    setTimeout(sendQuery, 80);
+  } else {
+    chatWindow.once("ready-to-show", () => setTimeout(sendQuery, 80));
+  }
+});
 
 // --- IPC: title bar window controls ---
 
@@ -161,6 +255,30 @@ app.whenReady().then(() => {
   // Ctrl+Space may conflict with some CJK input method editors (IMEs).
   // If the demo machine uses a CJK IME, disable this shortcut before presenting.
   globalShortcut.register("CommandOrControl+Space", () => showChatWindow());
+
+  // Ctrl+Shift+S — trigger memory check (toast + chat in background)
+  globalShortcut.register("CommandOrControl+Shift+S", () => {
+    const suggestions = checkSystem();
+    if (suggestions.length > 0) {
+      showToast("Apps are slowing down your computer", suggestions);
+      if (!chatWindow) createChatWindow();
+      setTimeout(() => {
+        if (chatWindow) chatWindow.webContents.send("system-check", suggestions);
+      }, 300);
+    }
+  });
+
+  // Ctrl+Shift+R — trigger reboot suggestion (chat only)
+  globalShortcut.register("CommandOrControl+Shift+R", () => {
+    const { checkUptime } = require("./system-monitor");
+    const up = checkUptime();
+    if (up) {
+      showChatWindow();
+      setTimeout(() => {
+        if (chatWindow) chatWindow.webContents.send("system-check", [up]);
+      }, 300);
+    }
+  });
 
   app.on("activate", () => {
     if (!floatingWindow) createFloatingWindow();

@@ -15,16 +15,18 @@ contextBridge.exposeInMainWorld("api", {
   stopSpeaking: () => ipcRenderer.invoke("stopSpeaking"),
   captureScreenshot: () => ipcRenderer.invoke("captureScreenshot"),
   openChatWindow: () => ipcRenderer.invoke("openChatWindow"),
+  openChatWindowVoice: () => ipcRenderer.invoke("openChatWindowVoice"),
+  openChatWindowWithQuery: (query) => ipcRenderer.invoke("openChatWindowWithQuery", query),
   closeChatWindow: () => ipcRenderer.invoke("closeChatWindow"),
+  requestMicFocus: () => ipcRenderer.invoke("requestMicFocus"),
   logEvent: (event) => ipcRenderer.invoke("logEvent", event),
   undoLast: () => ipcRenderer.invoke("undoLast"),
   // Title bar window controls
   winMinimize: () => ipcRenderer.invoke("win-minimize"),
   winMaximize: () => ipcRenderer.invoke("win-maximize"),
   winClose: () => ipcRenderer.invoke("win-close"),
-  // System monitor
-  getHeavyProcesses: () => ipcRenderer.invoke("getHeavyProcesses"),
-  killProcesses: (pids) => ipcRenderer.invoke("killProcesses", pids),
-  checkSystem: () => ipcRenderer.invoke("checkSystem"),
-  reboot: () => ipcRenderer.invoke("reboot"),
+  // Main → renderer push signals
+  onStartVoice:   (cb) => ipcRenderer.on("start-voice",   ()         => cb()),
+  onSubmitQuery:  (cb) => ipcRenderer.on("submit-query",  (_e, q)    => cb(q)),
+  onSystemCheck:  (cb) => ipcRenderer.on("system-check",  (_e, data) => cb(data)),
 });
