@@ -6,8 +6,10 @@ const { execSync } = require('child_process');
 // Demo overrides — set these env vars to fake system state for demos.
 // DEMO_UPTIME_DAYS=5  → pretend the computer has been on for 5 days
 // DEMO_RAM_USAGE_PCT=90 → pretend 90% of RAM is in use
+// DEMO_CPU_USAGE_PCT=90 → pretend 90% CPU usage
 const UPTIME_THRESHOLD_DAYS = 3;
 const RAM_THRESHOLD_PCT = 85;
+const CPU_THRESHOLD_PCT = 80;
 
 // Apps that should never be killed — OS-critical or our own app.
 const PROTECTED = [
@@ -44,6 +46,50 @@ function checkMemory() {
     return `Your memory is ${Math.round(usedPct)}% full. Closing some apps might speed things up.`;
   }
   return null;
+}
+
+/**
+ * Samples CPU usage over a short interval and returns a suggestion string if
+ * usage exceeds CPU_THRESHOLD_PCT, or null if the system is fine.
+ * Uses a synchronous 500ms sample on Windows (wmic) and a two-snapshot approach
+ * on macOS (ps). Falls back gracefully if the command fails.
+ */
+function checkCpu() {
+  if (process.env.DEMO_CPU_USAGE_PCT) {
+    const pct = Number(process.env.DEMO_CPU_USAGE_PCT);
+    if (pct >= CPU_THRESHOLD_PCT) {
+      return `Your computer's processor is working very hard right now (${Math.round(pct)}% busy). Closing some apps or restarting might help.`;
+    }
+    return null;
+  }
+
+  try {
+    let cpuPct = 0;
+    if (process.platform === 'darwin') {
+      // top -l 2 gives two samples; the second is more accurate
+      const raw = execSync('top -l 2 -n 0 | grep "CPU usage"', { encoding: 'utf8', timeout: 6000 });
+      const lines = raw.trim().split('\n');
+      const last = lines[lines.length - 1];
+      const match = last.match(/([\d.]+)%\s+user.*?([\d.]+)%\s+sys/);
+      if (match) cpuPct = parseFloat(match[1]) + parseFloat(match[2]);
+    } else {
+      // wmic returns LoadPercentage for each logical CPU core; average them
+      const raw = execSync('wmic cpu get LoadPercentage /value', { encoding: 'utf8', timeout: 5000 });
+      const matches = [...raw.matchAll(/LoadPercentage=(\d+)/g)];
+      if (matches.length > 0) {
+        const sum = matches.reduce((acc, m) => acc + parseInt(m[1], 10), 0);
+        cpuPct = sum / matches.length;
+      }
+    }
+
+    if (cpuPct >= CPU_THRESHOLD_PCT) {
+      return `Your computer's processor is working very hard right now (${Math.round(cpuPct)}% busy). Closing some apps or restarting might help.`;
+    }
+    return null;
+  } catch (err) {
+    console.error('[system-monitor] checkCpu error:', err.message);
+    return null;
+  }
 }
 
 // Friendly names for common processes — seniors don't know what "com.apple.WebKit" is.
@@ -156,19 +202,22 @@ function killProcesses(pids) {
 }
 
 function checkSystem() {
-  // Return at most one suggestion — memory takes priority over reboot
+  // Return at most one suggestion — memory takes priority, then CPU, then reboot
   const mem = checkMemory();
   if (mem) return [mem];
+  const cpu = checkCpu();
+  if (cpu) return [cpu];
   const up = checkUptime();
   if (up) return [up];
   return [];
 }
 
-module.exports = { checkUptime, checkMemory, checkSystem, getHeavyProcesses, killProcesses };
+module.exports = { checkUptime, checkMemory, checkCpu, checkSystem, getHeavyProcesses, killProcesses };
 
 // Self-test: node system-monitor.js
 if (require.main === module) {
   console.log('Uptime:', checkUptime() || '(ok)');
   console.log('Memory:', checkMemory() || '(ok)');
+  console.log('CPU:', checkCpu() || '(ok)');
   console.log('All:', checkSystem());
 }

@@ -273,9 +273,10 @@ async function handleUserInput(userText) {
 
 async function showSuggestions(suggestions) {
   const memSuggestion = suggestions.find(s => s.includes("memory"));
+  const cpuSuggestion = suggestions.find(s => s.includes("processor") || s.includes("busy"));
   const rebootSuggestion = suggestions.find(s => s.includes("been on for"));
 
-  // Memory: offer to close heavy apps
+  // Memory: offer to close heavy apps, then offer restart
   if (memSuggestion) {
     try {
       const procs = await window.api.getHeavyProcesses();
@@ -295,22 +296,52 @@ async function showSuggestions(suggestions) {
     } catch (err) {
       console.error("[suggestions] getHeavyProcesses failed:", err.message);
     }
-  }
-
-  // Reboot: just recommend it, don't offer to do it
-  if (rebootSuggestion) {
-    renderMessage("assistant", rebootSuggestion + " Try restarting your computer when you get a chance — it only takes a minute and can make a big difference.");
-    window.api.speak("Your computer has been on a while. Try restarting it when you get a chance.");
-    setMicState(IDLE);
+    // No heavy processes found — fall through to restart offer
+    offerRestart(memSuggestion);
     return;
   }
 
-  if (!memSuggestion) {
+  // CPU high load: offer to close apps and restart
+  if (cpuSuggestion) {
+    offerRestart(cpuSuggestion);
+    return;
+  }
+
+  // Reboot: offer restart with Yes/No
+  if (rebootSuggestion) {
+    offerRestart(rebootSuggestion);
+    return;
+  }
+
+  if (!memSuggestion && !cpuSuggestion) {
     for (const s of suggestions) {
       renderMessage("assistant", s);
     }
     setMicState(IDLE);
   }
+}
+
+/**
+ * Renders a restart offer in the chat with Yes/No buttons.
+ * Called when high memory, high CPU, or long uptime is detected.
+ */
+function offerRestart(contextMessage) {
+  const fullMessage = contextMessage
+    + "\n\nIf things are still slow, I can restart your computer for you. It only takes a minute and usually helps a lot.\n\nDo you want me to restart it?";
+
+  renderInlineConfirm(
+    fullMessage,
+    "Yes, restart",
+    "No, not now",
+    async () => {
+      renderMessage("assistant", "Restarting now… See you in a moment!");
+      window.api.speak("Restarting now. See you in a moment!");
+      // Short delay so the user can read the message before the screen goes dark
+      await new Promise(resolve => setTimeout(resolve, 5000));
+      await window.api.reboot();
+    },
+    "Your computer is under heavy load. Would you like me to restart it?"
+  );
 }
 
 function renderInlineConfirm(text, yesLabel, noLabel, onYes, speakText) {

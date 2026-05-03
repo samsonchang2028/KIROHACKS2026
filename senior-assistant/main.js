@@ -8,7 +8,7 @@ const {
 } = require("electron");
 const path = require("path");
 const stubs = require("./stubs");
-const { getHeavyProcesses, killProcesses, checkSystem } = require("./system-monitor");
+const { getHeavyProcesses, killProcesses, checkSystem, checkUptime, checkCpu } = require("./system-monitor");
 
 // Named sizes make position math readable and keep the two window configs in sync.
 // FLOATING.width/height is the Electron window — larger than the button (100px) to give
@@ -176,7 +176,7 @@ ipcMain.handle("reboot", () => {
   if (process.platform === "darwin") {
     execSync('osascript -e \'tell app "System Events" to restart\'', { stdio: "ignore" });
   } else {
-    execSync("shutdown /r /t 5", { stdio: "ignore" });
+    execSync("shutdown /r /t 0", { stdio: "ignore" });
   }
 });
 
@@ -223,12 +223,22 @@ app.whenReady().then(() => {
 
   // Ctrl+Shift+R — trigger reboot suggestion (chat only)
   globalShortcut.register("CommandOrControl+Shift+R", () => {
-    const { checkUptime } = require("./system-monitor");
     const up = checkUptime();
     if (up) {
       showChatWindow();
       setTimeout(() => {
         if (chatWindow) chatWindow.webContents.send("system-check", [up]);
+      }, 300);
+    }
+  });
+
+  // Ctrl+Shift+C — trigger CPU load suggestion (chat only, for testing)
+  globalShortcut.register("CommandOrControl+Shift+C", () => {
+    const cpu = checkCpu();
+    if (cpu) {
+      showChatWindow();
+      setTimeout(() => {
+        if (chatWindow) chatWindow.webContents.send("system-check", [cpu]);
       }, 300);
     }
   });
