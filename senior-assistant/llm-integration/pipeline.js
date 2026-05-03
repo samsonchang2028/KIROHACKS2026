@@ -188,7 +188,7 @@ async function handleQuery(userMessage) {
             speak: reply,
             action: executableAction,
             requiresConfirmation: REQUIRES_CONFIRMATION.has(action),
-            suggestions: checkSystem(),
+            suggestions: [],
         };
 
     } catch (err) {
