@@ -533,10 +533,47 @@ async function executeAndFinish(action) {
   }
 }
 
+<<<<<<< HEAD
 // --- Title bar controls ---
 document.getElementById("tb-minimize").addEventListener("click", () => window.api.winMinimize());
 document.getElementById("tb-maximize").addEventListener("click", () => window.api.winMaximize());
 document.getElementById("tb-close").addEventListener("click", () => window.api.winClose());
+=======
+// --- Walkthrough event handling ---
+// Tracks walkthrough progress from the chat side. On wait-for-input, captures
+// voice/text and sends it back. On finish/cancel, returns to idle.
+
+let walkthroughInputMode = false;
+
+window.api.walkthroughEvent((data) => {
+  switch (data.type) {
+    case "wait-for-input":
+      walkthroughInputMode = true;
+      renderMessage("assistant", data.text);
+      window.api.speak(data.text);
+      break;
+    case "walkthrough-finished":
+      walkthroughInputMode = false;
+      renderMessage("assistant", "All done! I'm here if you need anything else.");
+      setMicState(IDLE);
+      break;
+    case "walkthrough-cancelled":
+      walkthroughInputMode = false;
+      renderMessage("assistant", "Okay, stopped.");
+      window.api.speak("Okay, stopped.");
+      setMicState(IDLE);
+      break;
+  }
+});
+
+// Override submit to route input to the walkthrough when waiting for input.
+function submitWalkthroughInput(text) {
+  if (!text) return;
+  renderMessage("user", text);
+  walkthroughInputMode = false;
+  window.api.submitWalkthroughInput(text);
+}
+>>>>>>> ac54cee53148ab51d83728e77ef36c3aa78d3dbc
 
 // --- Init ---
 
