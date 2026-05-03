@@ -196,8 +196,12 @@ async function handleQuery(userMessage) {
 
             if (base64) {
                 try {
-                    parsed = await llm.visionQuery(userMessage, base64, conversationHistory.slice(0, -1));
+                    parsed = await llm.visionQuery(userMessage + ' [A screenshot of my screen is attached. Analyze it and respond directly. Do NOT return needs_screenshot.]', base64, conversationHistory.slice(0, -1));
                     console.log('[pipeline] vision result:', JSON.stringify(parsed));
+                    // Prevent infinite loop — if vision still returns needs_screenshot, convert to clarify
+                    if (parsed.action === 'needs_screenshot') {
+                        parsed = { action: 'clarify', params: null, reply: "I can see your screen. Can you tell me what part looks suspicious?" };
+                    }
                 } catch (visionErr) {
                     console.error('[LLM ERROR] vision query failed:', visionErr.message);
                     parsed = { action: 'clarify', params: null, reply: "I saw your screen but had trouble analyzing it. Can you describe what looks suspicious?" };
