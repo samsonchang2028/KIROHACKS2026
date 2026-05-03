@@ -658,7 +658,19 @@ async function executeAndFinish(action) {
 }
 
 // --- Title bar controls ---
-document.getElementById("tb-close").addEventListener("click", () => window.api.winClose());
+// Hide mac dots on Windows, show close button instead
+if (navigator.platform.startsWith('Win')) {
+  const dots = document.getElementById('title-bar-dots');
+  if (dots) dots.style.display = 'none';
+  // Add a close button for Windows
+  const closeBtn = document.createElement('button');
+  closeBtn.className = 'win-close-btn';
+  closeBtn.innerHTML = '✕';
+  closeBtn.addEventListener('click', () => window.api.winClose());
+  document.getElementById('title-bar').appendChild(closeBtn);
+} else {
+  document.getElementById("tb-close").addEventListener("click", () => window.api.winClose());
+}
 
 // --- Chip click handlers ---
 document.querySelectorAll('.chip').forEach(chip => {

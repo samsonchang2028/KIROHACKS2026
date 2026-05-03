@@ -699,13 +699,13 @@ body:has(#floating-btn) { background: transparent; }
   width: 100px;
   height: 100px;
   border-radius: 50%;
-  background: var(--blue-primary);
+  background: var(--blue-deep);
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 4px;
-  box-shadow: 0 6px 24px rgba(74,144,226,0.55), 0 2px 8px rgba(0,0,0,0.3);
+  box-shadow: 0 0 0 6px rgba(42,111,191,0.18), 0 6px 24px rgba(42,111,191,0.45), 0 2px 8px rgba(0,0,0,0.2);
   cursor: pointer;
   -webkit-app-region: no-drag;
   transition: transform 0.15s ease, filter 0.15s ease;
@@ -854,3 +854,15 @@ body:has(#floating-btn) { background: transparent; }
   font-family: 'Funnel Sans', system-ui, sans-serif;
   font-size: 15px; color: rgba(26,34,54,0.55);
 }
+
+/* Windows close button */
+.win-close-btn {
+  position: absolute; right: 0; top: 0;
+  width: 44px; height: 44px; border: 0;
+  background: transparent; color: #48526B;
+  font-size: 14px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  -webkit-app-region: no-drag;
+  border-radius: 0 18px 0 0;
+}
+.win-close-btn:hover { background: #c42b1c; color: #fff; }
