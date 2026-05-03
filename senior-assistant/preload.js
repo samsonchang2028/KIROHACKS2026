@@ -22,4 +22,9 @@ contextBridge.exposeInMainWorld("api", {
   winMinimize: () => ipcRenderer.invoke("win-minimize"),
   winMaximize: () => ipcRenderer.invoke("win-maximize"),
   winClose: () => ipcRenderer.invoke("win-close"),
+  // System monitor
+  getHeavyProcesses: () => ipcRenderer.invoke("getHeavyProcesses"),
+  killProcesses: (pids) => ipcRenderer.invoke("killProcesses", pids),
+  checkSystem: () => ipcRenderer.invoke("checkSystem"),
+  reboot: () => ipcRenderer.invoke("reboot"),
 });

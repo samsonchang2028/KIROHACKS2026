@@ -105,6 +105,7 @@ function nearestScale(value) {
 // where those modules may be mocked or unavailable.
 let llm = require('./llm');
 let screenshot = require('./screenshot');
+const { checkSystem } = require('../system-monitor');
 
 // --- Conversation history (in-memory only, never written to disk) ---
 // Keeps the last few exchanges so the LLM can handle follow-ups and clarifications.
@@ -187,6 +188,7 @@ async function handleQuery(userMessage) {
             speak: reply,
             action: executableAction,
             requiresConfirmation: REQUIRES_CONFIRMATION.has(action),
+            suggestions: checkSystem(),
         };
 
     } catch (err) {
@@ -196,6 +198,7 @@ async function handleQuery(userMessage) {
             speak: 'I had trouble with that. Please try again.',
             action: null,
             requiresConfirmation: false,
+            suggestions: [],
         };
     }
 }

@@ -239,20 +239,22 @@ async function handleUserInput(userText) {
     renderMessage("assistant", response.speak);
 
     if (response.requiresConfirmation && response.action) {
-      // Confirmation flow — speak is handled by setMicState(CONFIRMING).
       setMicState(CONFIRMING, {
         question: response.speak,
         action: response.action,
       });
     } else if (response.action) {
-      // Action that doesn't need confirmation — speak response, then execute.
       window.api.speak(response.speak);
       setMicState(DOING);
       await executeAndFinish(response.action);
     } else {
-      // No action (clarification, refusal, etc.) — just speak the response and go idle.
       window.api.speak(response.speak);
-      setMicState(IDLE);
+      // Show suggestions if any (e.g. slow computer → offer to close apps)
+      if (response.suggestions && response.suggestions.length > 0) {
+        await showSuggestions(response.suggestions);
+      } else {
+        setMicState(IDLE);
+      }
     }
   } catch (err) {
     renderMessage(
@@ -262,6 +264,98 @@ async function handleUserInput(userText) {
     window.api.speak("Sorry, something went wrong.");
     setMicState(IDLE);
   }
+}
+
+// --- Suggestions + heavy process flow ---
+
+async function showSuggestions(suggestions) {
+  const memSuggestion = suggestions.find(s => s.includes("memory"));
+  const rebootSuggestion = suggestions.find(s => s.includes("been on for"));
+
+  // Memory: offer to close heavy apps
+  if (memSuggestion) {
+    try {
+      const procs = await window.api.getHeavyProcesses();
+      if (procs.length > 0) {
+        const allPids = procs.flatMap(p => p.pids || [p.pid]);
+        const lines = memSuggestion
+          + "\n\nThese apps are using the most memory:\n"
+          + procs.map(p => `• ${p.friendlyName} — using ${p.memPct}% of memory`).join("\n")
+          + "\n\nWould you like me to close them?";
+
+        renderInlineConfirm(lines, "Yes, close them", "No, leave them",
+          () => executeAndFinish({ name: "_killProcesses", params: { pids: allPids } }),
+          `I found ${procs.length} apps using a lot of memory. Want me to close them?`
+        );
+      }
+    } catch (err) {
+      console.error("[suggestions] getHeavyProcesses failed:", err.message);
+    }
+  }
+
+  // Reboot: separate message
+  if (rebootSuggestion) {
+    renderInlineConfirm(
+      rebootSuggestion + "\n\nWould you like me to restart your computer?",
+      "Yes, restart", "No, not now",
+      () => executeAndFinish({ name: "_reboot", params: {} }),
+      "Your computer has been on a while. Want me to restart it?"
+    );
+    return;
+  }
+
+  if (!memSuggestion) {
+    for (const s of suggestions) {
+      renderMessage("assistant", s);
+    }
+    setMicState(IDLE);
+  }
+}
+
+function renderInlineConfirm(text, yesLabel, noLabel, onYes, speakText) {
+  const div = document.createElement("div");
+  div.className = "msg msg-assistant";
+  div.style.whiteSpace = "pre-line";
+  div.textContent = text;
+
+  const btnRow = document.createElement("div");
+  btnRow.style.marginTop = "10px";
+  btnRow.style.display = "flex";
+  btnRow.style.gap = "8px";
+
+  const yes = document.createElement("button");
+  yes.className = "confirm-btn confirm-yes";
+  yes.textContent = yesLabel;
+  yes.addEventListener("click", async () => {
+    btnRow.remove();
+    setMicState(DOING);
+    await onYes();
+  });
+
+  const no = document.createElement("button");
+  no.className = "confirm-btn confirm-no";
+  no.textContent = noLabel;
+  no.addEventListener("click", () => {
+    btnRow.remove();
+    renderMessage("assistant", "Okay, no problem.");
+    window.api.speak("Okay, no problem.");
+    setMicState(IDLE);
+  });
+
+  btnRow.appendChild(yes);
+  btnRow.appendChild(no);
+  div.appendChild(btnRow);
+
+  hintEl.classList.add("hidden");
+  messagesEl.appendChild(div);
+  messagesEl.scrollTop = messagesEl.scrollHeight;
+
+  if (speakText) window.api.speak(speakText);
+  currentState = CONFIRMING;
+  statusEl.textContent = "";
+  setVoiceButtonState(CONFIRMING);
+  textInput.disabled = true;
+  sendBtn.disabled = true;
 }
 
 // --- Text input: Enter submits, Shift+Enter inserts newline ---
@@ -365,8 +459,18 @@ async function handleConfirm(confirmed, action) {
 
 async function executeAndFinish(action) {
   try {
-    await window.api.executeAction(action);
-    renderMessage("assistant", "Done.");
+    if (action.name === "_killProcesses") {
+      const killed = await window.api.killProcesses(action.params.pids);
+      renderMessage("assistant", `Done! I closed ${killed} app${killed !== 1 ? 's' : ''}. Your computer should feel faster now.`);
+      window.api.speak(`Done! I closed ${killed} apps. Your computer should feel faster now.`);
+    } else if (action.name === "_reboot") {
+      renderMessage("assistant", "Restarting your computer now. See you soon!");
+      window.api.speak("Restarting your computer now. See you soon!");
+      await window.api.reboot();
+    } else {
+      await window.api.executeAction(action);
+      renderMessage("assistant", "Done.");
+    }
     setMicState(IDLE, "completed");
   } catch (err) {
     renderMessage(
@@ -380,5 +484,15 @@ async function executeAndFinish(action) {
 
 // --- Init ---
 
-initMic(); // Request mic access upfront — first recording starts instantly.
+initMic();
 setMicState(IDLE);
+
+// Proactive system check on startup
+(async () => {
+  try {
+    const suggestions = await window.api.checkSystem();
+    if (suggestions.length > 0) {
+      await showSuggestions(suggestions);
+    }
+  } catch (_) {}
+})();

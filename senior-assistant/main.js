@@ -8,6 +8,7 @@ const {
 } = require("electron");
 const path = require("path");
 const stubs = require("./stubs");
+const { getHeavyProcesses, killProcesses, checkSystem } = require("./system-monitor");
 
 // Named sizes make position math readable and keep the two window configs in sync.
 // FLOATING.width/height is the Electron window — larger than the button (100px) to give
@@ -117,6 +118,19 @@ ipcMain.handle("executeAction", (_e, action) => stubs.executeAction(action));
 ipcMain.handle("speak", (_e, text) => stubs.speak(text));
 ipcMain.handle("stopSpeaking", () => stubs.stopSpeaking());
 ipcMain.handle("captureScreenshot", () => stubs.captureScreenshot());
+
+// --- IPC: system monitor ---
+ipcMain.handle("getHeavyProcesses", () => getHeavyProcesses());
+ipcMain.handle("killProcesses", (_e, pids) => killProcesses(pids));
+ipcMain.handle("checkSystem", () => checkSystem());
+ipcMain.handle("reboot", () => {
+  const { execSync } = require("child_process");
+  if (process.platform === "darwin") {
+    execSync('osascript -e \'tell app "System Events" to restart\'', { stdio: "ignore" });
+  } else {
+    execSync("shutdown /r /t 5", { stdio: "ignore" });
+  }
+});
 
 // logEvent and undoLast have no stub yet; Person 3 will implement the real undo log.
 ipcMain.handle("logEvent", (_e, event) => {
