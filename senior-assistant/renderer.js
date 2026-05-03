@@ -11,18 +11,23 @@ const VALID_STATES = [IDLE, LISTENING, THINKING, CONFIRMING, DOING];
 // Status text shown only during active states — idle shows nothing (input row is enough).
 const STATUS_TEXT = {
   [IDLE]: "",
-  [LISTENING]: "Listening...",
-  [THINKING]: "Thinking...",
+  [LISTENING]: "Tap when you're done",
+  [THINKING]: "",
   [CONFIRMING]: "",
   [DOING]: "Doing it now...",
 };
 
 let currentState = IDLE;
 
-// --- Mic recording (teammate's implementation — do not modify signatures) ---
-// initMic requests access upfront so first recording starts instantly.
-// startRecording / stopRecording wrap MediaRecorder with clean ArrayBuffer output.
+// --- Card kind tokens ---
+const CARD_TOKENS = {
+  default: { iconFg: '#2A6FBF', eyebrow: 'Done', cls: 'card-default', iconSvg: '<svg width="28" height="28" viewBox="0 0 24 24" fill="#2A6FBF" aria-hidden="true"><path d="M12 2l1.6 6.4L20 10l-6.4 1.6L12 18l-1.6-6.4L4 10l6.4-1.6z" opacity="0.9"/><circle cx="19" cy="5" r="1.2"/><circle cx="5" cy="19" r="1.2"/></svg>' },
+  warn:    { iconFg: '#A86808', eyebrow: 'Heads up', cls: 'card-warn', iconSvg: '<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#A86808" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4l9 16H3z"/><path d="M12 10v5M12 18.2v.1"/></svg>' },
+  success: { iconFg: '#1E7E47', eyebrow: 'All set', cls: 'card-success', iconSvg: '<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#1E7E47" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5l5 5L20 6.5"/></svg>' },
+  ask:     { iconFg: '#5B41A8', eyebrow: 'Quick check', cls: 'card-ask', iconSvg: '<svg width="28" height="28" viewBox="0 0 24 24" fill="#5B41A8" aria-hidden="true"><path d="M12 2l1.6 6.4L20 10l-6.4 1.6L12 18l-1.6-6.4L4 10l6.4-1.6z" opacity="0.9"/><circle cx="19" cy="5" r="1.2"/><circle cx="5" cy="19" r="1.2"/></svg>' },
+};
 
+// --- Mic recording (teammate's implementation — do not modify signatures) ---
 let mediaRecorder = null;
 let audioChunks = [];
 let micStream = null;
@@ -31,9 +36,9 @@ let micStream = null;
 let audioContext = null;
 let analyser = null;
 let silenceTimer = null;
-const SILENCE_THRESHOLD = 40;   // average frequency level below this = silence (0-255 scale)
-const SILENCE_DURATION = 1500;  // ms of silence before auto-stop
-const MIN_RECORD_TIME = 800;    // don't auto-stop in the first 800ms
+const SILENCE_THRESHOLD = 35;
+const SILENCE_DURATION = 2000;
+const MIN_RECORD_TIME = 1500;
 let recordingStartTime = 0;
 let silenceDetectionActive = false;
 
@@ -119,7 +124,6 @@ function stopRecording() {
         return;
       }
       const blob = new Blob(audioChunks, { type: "audio/webm" });
-      // ArrayBuffer transfers cleanly over Electron IPC.
       resolve(await blob.arrayBuffer());
     };
     mediaRecorder.stop();
@@ -127,7 +131,6 @@ function stopRecording() {
 }
 
 // --- DOM refs ---
-
 const statusEl = document.getElementById("status-text");
 const micArea = document.getElementById("mic-area");
 const messagesEl = document.getElementById("messages");
@@ -137,25 +140,99 @@ const sendBtn = document.getElementById("send-btn");
 const voiceBtn = document.getElementById("voice-btn");
 const voiceIcon = document.getElementById("voice-icon");
 const voiceLabel = document.getElementById("voice-label");
+const idleHero = document.getElementById("idle-hero");
+
+// SVG icon strings
+const SVG_MIC_BLUE = '<svg width="53" height="53" viewBox="0 0 24 24" fill="none" stroke="#2A6FBF" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3"/></svg>';
+const SVG_MIC_COMPACT = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#2A6FBF" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3"/></svg>';
+
+// --- Detect card kind from text ---
+function detectCardKind(text) {
+  const t = text.toLowerCase();
+  if (t.includes('warning') || t.includes('⚠') || t.includes('memory') || t.includes('slowing') || t.includes('running low') || t.includes('heavy load'))
+    return 'warn';
+  if (t.includes('done') || t.includes('closed') || t.includes('success') || t.includes('started') || t.includes('all set') || t.includes('starting'))
+    return 'success';
+  if (t.includes('confirm') || t.includes('would you like') || t.includes('do you want') || t.includes('shall i') || t.includes('close the'))
+    return 'ask';
+  return 'default';
+}
+
+// --- Extract a short title from text ---
+function extractTitle(text) {
+  // Use first sentence or first 60 chars
+  const firstSentence = text.split(/[.!?\n]/)[0].trim();
+  return firstSentence.length > 60 ? firstSentence.substring(0, 57) + '…' : firstSentence;
+}
+
+// --- Build a BigResultCard DOM element ---
+function buildCard(kind, title, body, opts = {}) {
+  const t = CARD_TOKENS[kind];
+  const card = document.createElement('div');
+  card.className = `big-result-card ${t.cls} msg-animate`;
+
+  let actionsHtml = '';
+  if (opts.primaryLabel || opts.secondaryLabel) {
+    actionsHtml = '<div class="card-actions">';
+    if (opts.primaryLabel) actionsHtml += `<button class="card-btn-primary" data-action="primary">${opts.primaryLabel}</button>`;
+    if (opts.secondaryLabel) actionsHtml += `<button class="card-btn-secondary" data-action="secondary">${opts.secondaryLabel}</button>`;
+    actionsHtml += '</div>';
+  }
+
+  card.innerHTML = `<div class="big-result-card-inner">
+    <div class="card-header">
+      <div class="card-icon-tile">${t.iconSvg}</div>
+      <div>
+        <div class="card-eyebrow">${opts.eyebrow || t.eyebrow}</div>
+        <div class="card-title">${title}</div>
+      </div>
+    </div>
+    <div class="card-body">${body}</div>
+    ${opts.extraHtml || ''}
+    ${actionsHtml}
+  </div>`;
+
+  return card;
+}
+
+// --- Switch to result view (hide idle hero, show scrollable cards) ---
+function ensureResultView() {
+  if (idleHero) idleHero.classList.add('hidden');
+  messagesEl.classList.add('result-scroll-mode');
+  const compactRow = document.getElementById('compact-mic-row');
+  if (compactRow) compactRow.classList.remove('hidden');
+}
 
 // --- Message rendering ---
-
 function renderMessage(role, text) {
-  // Hide the onboarding hint permanently once the first message appears.
+  ensureResultView();
   hintEl.classList.add("hidden");
+  const chipsEl = document.getElementById("chips");
+  if (chipsEl) chipsEl.classList.add("hidden");
 
-  const div = document.createElement("div");
-  div.className = `msg msg-${role}`;
-  div.textContent = text;
-  messagesEl.appendChild(div);
+  if (role === "assistant") {
+    const kind = detectCardKind(text);
+    const t = CARD_TOKENS[kind];
+    // Short messages: use text as title, no body. Long messages: extract title, rest is body.
+    const sentences = text.split(/(?<=[.!?])\s+/);
+    const title = sentences[0] || text;
+    const body = sentences.length > 1 ? sentences.slice(1).join(' ') : '';
+    const card = buildCard(kind, title, body);
+    messagesEl.appendChild(card);
+  } else {
+    // User transcript label
+    const label = document.createElement("div");
+    label.className = "transcript-label msg-animate";
+    label.innerHTML = `<span class="transcript-label-prefix">You said</span><span class="transcript-label-text">"${text}"</span>`;
+    messagesEl.appendChild(label);
+  }
   messagesEl.scrollTop = messagesEl.scrollHeight;
 }
 
 // --- Confirmation buttons (injected into mic-area during confirming state) ---
-
 function renderConfirmButtons(question, action) {
+  // In result view, put confirm buttons inside the last card if possible
   micArea.replaceChildren();
-
   const yes = document.createElement("button");
   yes.className = "confirm-btn confirm-yes";
   yes.textContent = "Yes";
@@ -166,36 +243,81 @@ function renderConfirmButtons(question, action) {
   no.textContent = "No";
   no.addEventListener("click", () => handleConfirm(false, action));
 
+  micArea.style.flexDirection = 'row';
+  micArea.style.justifyContent = 'center';
+  micArea.style.gap = '12px';
+  micArea.style.padding = '12px 18px';
   micArea.appendChild(yes);
   micArea.appendChild(no);
 }
 
 function clearConfirmButtons() {
-  micArea.replaceChildren();
+  // Only clear the mic-area if it's being used for confirm buttons
+  // Don't touch the voice button — it lives in idle-hero or compact-mic-row
 }
 
 // --- Voice button visual state ---
-
 function setVoiceButtonState(state) {
-  voiceBtn.className = `voice-btn-${state}`;
+  // Reset classes
+  voiceBtn.className = '';
+  const cBtn = document.getElementById('compact-mic-btn');
+  const cLabel = document.getElementById('compact-mic-label');
 
   if (state === LISTENING) {
-    voiceIcon.textContent = "⏹";
-    voiceLabel.textContent = "Stop";
-    // Glow ring signals mic is live — slow and calm, not alarming.
-    voiceBtn.classList.add("pulsing");
+    voiceBtn.classList.add('mic-listening');
+    voiceIcon.innerHTML = '<div class="wave-bars"><div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div></div>';
+    voiceLabel.textContent = '';
+    voiceBtn.setAttribute('aria-label', 'Listening…');
+    if (cBtn) { cBtn.className = 'compact-mic-listening'; }
+    if (cLabel) { cLabel.textContent = 'Listening… tap when done'; cLabel.style.color = '#D63B28'; }
+
+    if (idleHero && !idleHero.classList.contains('hidden')) {
+      idleHero.className = 'listening-bg';
+      idleHero.id = 'idle-hero';
+      hintEl.className = 'listening-label';
+      hintEl.innerHTML = '<span class="rec-dot"></span> Listening';
+      statusEl.textContent = STATUS_TEXT[LISTENING];
+    }
   } else if (state === THINKING) {
-    voiceIcon.textContent = "⟳";
-    voiceLabel.textContent = "Thinking...";
-    voiceBtn.classList.add("spinning-icon");
+    voiceBtn.classList.add('mic-thinking');
+    voiceIcon.innerHTML = '<div class="think-dots"><div class="think-dot"></div><div class="think-dot"></div><div class="think-dot"></div></div>';
+    voiceLabel.textContent = '';
+    voiceBtn.setAttribute('aria-label', 'Thinking…');
+    if (cBtn) { cBtn.className = 'compact-mic-thinking'; }
+    if (cLabel) { cLabel.textContent = 'Thinking…'; cLabel.style.color = '#D88B0E'; }
+
+    if (idleHero && !idleHero.classList.contains('hidden')) {
+      idleHero.className = 'thinking-bg';
+      idleHero.id = 'idle-hero';
+      hintEl.className = 'thinking-label';
+      hintEl.innerHTML = '<span class="rec-dot" style="background:var(--amber-deep)"></span> Thinking';
+      statusEl.textContent = '';
+    }
+  } else if (state === DOING) {
+    voiceBtn.classList.add('mic-doing');
+    voiceIcon.innerHTML = '<div class="think-dots"><div class="think-dot" style="background:var(--green-deep)"></div><div class="think-dot" style="background:var(--green-deep)"></div><div class="think-dot" style="background:var(--green-deep)"></div></div>';
+    voiceLabel.textContent = '';
+    voiceBtn.setAttribute('aria-label', 'Working…');
+    if (cBtn) { cBtn.className = 'compact-mic-doing'; }
+    if (cLabel) { cLabel.textContent = 'Working…'; cLabel.style.color = '#1E7E47'; }
   } else {
-    voiceIcon.textContent = "🎤";
-    voiceLabel.textContent = "Speak";
+    voiceIcon.innerHTML = SVG_MIC_BLUE;
+    voiceLabel.textContent = 'Tap to talk';
+    voiceBtn.setAttribute('aria-label', 'Tap to talk');
+    if (cBtn) { cBtn.className = ''; cBtn.id = 'compact-mic-btn'; }
+    if (cLabel) { cLabel.textContent = 'Tap to ask another question'; cLabel.style.color = ''; }
+
+    if (idleHero && !idleHero.classList.contains('hidden')) {
+      idleHero.className = '';
+      idleHero.id = 'idle-hero';
+      hintEl.className = '';
+      hintEl.innerHTML = "Hi there.<br/>I'm here when you need me.";
+      statusEl.textContent = '';
+    }
   }
 }
 
 // --- Core state function — the only place state ever changes ---
-
 function setMicState(state, context) {
   if (!VALID_STATES.includes(state))
     throw new Error(`Invalid mic state: ${state}`);
@@ -211,13 +333,13 @@ function setMicState(state, context) {
 
   setVoiceButtonState(state);
 
-  // Disable text input while assistant is busy; re-enable at idle or confirming.
   const busy = state !== IDLE && state !== CONFIRMING;
   textInput.disabled = busy;
   sendBtn.disabled = busy;
   voiceBtn.disabled = state === THINKING || state === DOING;
+  const cBtn = document.getElementById('compact-mic-btn');
+  if (cBtn) cBtn.disabled = state === THINKING || state === DOING;
 
-  // Announce transitions for vision-impaired users.
   if (state === LISTENING) window.api.speak("Listening");
   else if (state === THINKING) window.api.speak("Thinking");
   else if (state === DOING) window.api.speak("Doing it now");
@@ -227,7 +349,6 @@ function setMicState(state, context) {
 }
 
 // --- Shared response handler (text and voice both funnel here) ---
-
 async function handleUserInput(userText) {
   if (!userText || !userText.trim()) return;
 
@@ -239,26 +360,36 @@ async function handleUserInput(userText) {
     console.log('[pipeline] calling getResponse...');
     const response = await window.api.getResponse(userText);
     console.log('[pipeline] agent response:', JSON.stringify(response));
-    renderMessage("assistant", response.speak);
 
     if (response.requiresConfirmation && response.walkthrough) {
-      // Walkthrough confirmation — action field carries the walkthrough name.
-      setMicState(CONFIRMING, {
-        question: response.speak,
-        action: { __walkthrough: response.walkthrough },
-      });
+      renderInlineConfirm(
+        response.speak,
+        "Yes",
+        "No",
+        async () => {
+          setMicState(IDLE);
+          window.api.startWalkthrough(response.walkthrough);
+        },
+        response.speak
+      );
     } else if (response.requiresConfirmation && response.action) {
-      setMicState(CONFIRMING, {
-        question: response.speak,
-        action: response.action,
-      });
+      renderInlineConfirm(
+        response.speak,
+        "Yes, go ahead",
+        "No, cancel",
+        async () => {
+          await executeAndFinish(response.action);
+        },
+        response.speak
+      );
     } else if (response.action) {
+      renderMessage("assistant", response.speak);
       window.api.speak(response.speak);
       setMicState(DOING);
       await executeAndFinish(response.action);
     } else {
+      renderMessage("assistant", response.speak);
       window.api.speak(response.speak);
-      // Show suggestions if any (e.g. slow computer → offer to close apps)
       if (response.suggestions && response.suggestions.length > 0) {
         await showSuggestions(response.suggestions);
       } else {
@@ -276,13 +407,11 @@ async function handleUserInput(userText) {
 }
 
 // --- Suggestions + heavy process flow ---
-
 async function showSuggestions(suggestions) {
   const memSuggestion = suggestions.find(s => s.includes("memory"));
   const cpuSuggestion = suggestions.find(s => s.includes("processor") || s.includes("busy"));
   const rebootSuggestion = suggestions.find(s => s.includes("been on for"));
 
-  // Memory: offer to close heavy apps, then offer restart
   if (memSuggestion) {
     try {
       const procs = await window.api.getHeavyProcesses();
@@ -302,18 +431,15 @@ async function showSuggestions(suggestions) {
     } catch (err) {
       console.error("[suggestions] getHeavyProcesses failed:", err.message);
     }
-    // No heavy processes found — fall through to restart offer
     offerRestart(memSuggestion);
     return;
   }
 
-  // CPU high load: offer to close apps and restart
   if (cpuSuggestion) {
     offerRestart(cpuSuggestion);
     return;
   }
 
-  // Reboot: offer restart with Yes/No
   if (rebootSuggestion) {
     offerRestart(rebootSuggestion);
     return;
@@ -327,10 +453,6 @@ async function showSuggestions(suggestions) {
   }
 }
 
-/**
- * Renders a restart offer in the chat with Yes/No buttons.
- * Called when high memory, high CPU, or long uptime is detected.
- */
 function offerRestart(contextMessage) {
   const fullMessage = contextMessage
     + "\n\nIf things are still slow, I can restart your computer for you. It only takes a minute and usually helps a lot.\n\nDo you want me to restart it?";
@@ -342,7 +464,6 @@ function offerRestart(contextMessage) {
     async () => {
       renderMessage("assistant", "Restarting now… See you in a moment!");
       window.api.speak("Restarting now. See you in a moment!");
-      // Short delay so the user can read the message before the screen goes dark
       await new Promise(resolve => setTimeout(resolve, 5000));
       await window.api.reboot();
     },
@@ -351,42 +472,46 @@ function offerRestart(contextMessage) {
 }
 
 function renderInlineConfirm(text, yesLabel, noLabel, onYes, speakText) {
-  const div = document.createElement("div");
-  div.className = "msg msg-assistant";
-  div.style.whiteSpace = "pre-line";
-  div.textContent = text;
-
-  const btnRow = document.createElement("div");
-  btnRow.style.marginTop = "10px";
-  btnRow.style.display = "flex";
-  btnRow.style.gap = "8px";
-
-  const yes = document.createElement("button");
-  yes.className = "confirm-btn confirm-yes";
-  yes.textContent = yesLabel;
-  yes.addEventListener("click", async () => {
-    btnRow.remove();
-    setMicState(DOING);
-    await onYes();
+  ensureResultView();
+  const kind = detectCardKind(text);
+  const sentences = text.split(/(?<=[.!?])\s+/);
+  const title = sentences[0] || text;
+  const body = sentences.length > 1 ? sentences.slice(1).join(' ') : '';
+  const card = buildCard(kind, title, body, {
+    primaryLabel: yesLabel,
+    secondaryLabel: noLabel,
   });
 
-  const no = document.createElement("button");
-  no.className = "confirm-btn confirm-no";
-  no.textContent = noLabel;
-  no.addEventListener("click", () => {
-    btnRow.remove();
-    renderMessage("assistant", "Okay, no problem.");
-    window.api.speak("Okay, no problem.");
-    setMicState(IDLE);
-  });
+  // Wire up button handlers
+  const primaryBtn = card.querySelector('[data-action="primary"]');
+  const secondaryBtn = card.querySelector('[data-action="secondary"]');
 
-  btnRow.appendChild(yes);
-  btnRow.appendChild(no);
-  div.appendChild(btnRow);
+  if (primaryBtn) {
+    primaryBtn.addEventListener('click', async () => {
+      card.querySelector('.card-actions')?.remove();
+      setMicState(DOING);
+      try {
+        await onYes();
+      } finally {
+        if (currentState !== IDLE) setMicState(IDLE);
+      }
+    });
+  }
+  if (secondaryBtn) {
+    secondaryBtn.addEventListener('click', () => {
+      card.querySelector('.card-actions')?.remove();
+      renderMessage("assistant", "Okay, no problem.");
+      window.api.speak("Okay, no problem.");
+      setMicState(IDLE);
+    });
+  }
 
   hintEl.classList.add("hidden");
-  messagesEl.appendChild(div);
-  messagesEl.scrollTop = messagesEl.scrollHeight;
+  messagesEl.appendChild(card);
+  // Ensure buttons are visible — scroll after a brief delay for render
+  requestAnimationFrame(() => {
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+  });
 
   if (speakText) window.api.speak(speakText);
   currentState = CONFIRMING;
@@ -397,9 +522,8 @@ function renderInlineConfirm(text, yesLabel, noLabel, onYes, speakText) {
 }
 
 // --- Text input: Enter submits, Shift+Enter inserts newline ---
-
 textInput.addEventListener("keydown", (e) => {
-  if (e.key === "Enter" && !e.shiftKey) {
+  if (e.key === "Enter") {
     e.preventDefault();
     submitTextInput();
   }
@@ -407,28 +531,32 @@ textInput.addEventListener("keydown", (e) => {
 
 sendBtn.addEventListener("click", submitTextInput);
 
+// Send button styling: toggle has-text class
+textInput.addEventListener("input", () => {
+  sendBtn.classList.toggle("has-text", textInput.value.trim().length > 0);
+});
+
 function submitTextInput() {
   const text = textInput.value.trim();
+  console.log('[input] submitTextInput called, text:', text, 'state:', currentState, 'walkthrough:', walkthroughInputMode);
   if (!text) return;
-  // Route to walkthrough if waiting for senior input (e.g. meeting ID).
   if (walkthroughInputMode) {
     textInput.value = "";
+    sendBtn.classList.remove("has-text");
     submitWalkthroughInput(text);
     return;
   }
   if (currentState !== IDLE) return;
-  // Stop any in-progress speech when user submits text.
   window.api.stopSpeaking();
   textInput.value = "";
+  sendBtn.classList.remove("has-text");
   handleUserInput(text);
 }
 
 // --- Voice button: click once to start, click again to stop ---
-
 voiceBtn.addEventListener("click", async () => {
   if (currentState === IDLE) await startListening();
   else if (currentState === LISTENING) await stopListening();
-  // Other states: button is disabled, clicks are ignored.
 });
 
 async function startListening() {
@@ -440,7 +568,6 @@ async function startListening() {
     window.api.speak("I couldn't access your microphone.");
     return;
   }
-  // Stop any in-progress speech when user starts talking.
   window.api.stopSpeaking();
   startRecording();
   recordingStartTime = Date.now();
@@ -490,7 +617,6 @@ async function stopListening() {
 }
 
 // --- Confirm / cancel ---
-
 async function handleConfirm(confirmed, action) {
   if (confirmed && action?.__walkthrough) {
     setMicState(IDLE);
@@ -531,16 +657,19 @@ async function executeAndFinish(action) {
   }
 }
 
-<<<<<<< HEAD
 // --- Title bar controls ---
-document.getElementById("tb-minimize").addEventListener("click", () => window.api.winMinimize());
-document.getElementById("tb-maximize").addEventListener("click", () => window.api.winMaximize());
 document.getElementById("tb-close").addEventListener("click", () => window.api.winClose());
-=======
-// --- Walkthrough event handling ---
-// Tracks walkthrough progress from the chat side. On wait-for-input, captures
-// voice/text and sends it back. On finish/cancel, returns to idle.
 
+// --- Chip click handlers ---
+document.querySelectorAll('.chip').forEach(chip => {
+  chip.addEventListener('click', () => {
+    if (currentState !== IDLE) return;
+    const text = chip.textContent.trim();
+    handleUserInput(text);
+  });
+});
+
+// --- Walkthrough event handling ---
 let walkthroughInputMode = false;
 
 window.api.walkthroughEvent((data) => {
@@ -564,19 +693,25 @@ window.api.walkthroughEvent((data) => {
   }
 });
 
-// Override submit to route input to the walkthrough when waiting for input.
 function submitWalkthroughInput(text) {
   if (!text) return;
   renderMessage("user", text);
   walkthroughInputMode = false;
   window.api.submitWalkthroughInput(text);
 }
->>>>>>> ac54cee53148ab51d83728e77ef36c3aa78d3dbc
 
 // --- Init ---
-
 initMic();
 setMicState(IDLE);
+
+// Compact mic button — same as main voice button
+const compactMicBtn = document.getElementById('compact-mic-btn');
+if (compactMicBtn) {
+  compactMicBtn.addEventListener('click', async () => {
+    if (currentState === IDLE) await startListening();
+    else if (currentState === LISTENING) await stopListening();
+  });
+}
 
 // Listen for proactive system check trigger from main process
 window.api.onSystemCheck(async (suggestions) => {
@@ -586,7 +721,6 @@ window.api.onSystemCheck(async (suggestions) => {
 });
 
 // Listen for long-press voice trigger from the floating button.
-// When main sends "start-voice", auto-start listening if we're idle.
 if (window.api.onStartVoice) {
   window.api.onStartVoice(() => {
     if (currentState === IDLE) startListening();
@@ -594,7 +728,6 @@ if (window.api.onStartVoice) {
 }
 
 // Listen for pre-filled query from floating button hold-to-record flow.
-// When main sends "submit-query", submit it as if the user typed and sent it.
 if (window.api.onSubmitQuery) {
   window.api.onSubmitQuery((query) => {
     console.log('[pipeline] submit-query received:', query);

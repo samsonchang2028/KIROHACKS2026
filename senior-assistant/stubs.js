@@ -28,10 +28,9 @@ const WHISPER_BIN = path.join(
   "node_modules/whisper-node/lib/whisper.cpp",
   process.platform === "win32" ? "main.exe" : "main",
 );
-const WHISPER_MODEL = path.join(
-  __dirname,
-  "node_modules/whisper-node/lib/whisper.cpp/models/ggml-base.en.bin",
-);
+const WHISPER_MODEL = fs.existsSync(path.join(__dirname, "node_modules/whisper-node/lib/whisper.cpp/models/ggml-base.en.bin"))
+  ? path.join(__dirname, "node_modules/whisper-node/lib/whisper.cpp/models/ggml-base.en.bin")
+  : path.join(__dirname, "node_modules/whisper-node/lib/whisper.cpp/models/ggml-base.bin");
 
 // Check if local whisper.cpp is available — if not, we'll use the cloud API.
 const _hasLocalWhisper =
